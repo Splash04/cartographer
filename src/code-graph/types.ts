@@ -1,4 +1,4 @@
-export const CODE_GRAPH_SCHEMA_VERSION = "cartographer.code-graph.v1";
+export const CODE_GRAPH_SCHEMA_VERSION = "cartographer.graph.v2";
 
 export type CodeGraphNodeKind =
 	| "RepoSnapshot"
@@ -8,16 +8,10 @@ export type CodeGraphNodeKind =
 	| "File"
 	| "Directory"
 	| "Symbol"
-	| "Entrypoint"
-	| "Route"
-	| "Test"
 	| "Doc"
 	| "GeneratedArtifact"
 	| "Config"
 	| "EnvVar"
-	| "BoundaryPolicy"
-	| "Finding"
-	| "AgentAnnotation"
 	| "ExternalDependency"
 	| "Migration"
 	| "DbTable"
@@ -34,9 +28,6 @@ export type CodeGraphEdgeKind =
 	| "IMPORTS"
 	| "TYPE_IMPORTS"
 	| "EXPORTS"
-	| "REFERENCES"
-	| "CALLS"
-	| "ROUTES_TO"
 	| "TESTS"
 	| "DOCUMENTS"
 	| "GENERATED_BY"
@@ -46,16 +37,10 @@ export type CodeGraphEdgeKind =
 	| "SERVICE_CALLS_RPC"
 	| "TABLE_REFERENCES_TABLE"
 	| "DEPENDS_ON"
-	| "TASK_DEPENDS_ON"
 	| "AFFECTS"
-	| "OWNED_BY"
-	| "GUARDED_BY"
-	| "STALE_BECAUSE"
-	| "ANNOTATES"
 	| "MIGRATION_CREATES"
 	| "MIGRATION_ALTERS"
 	| "MIGRATION_DROPS"
-	| "MIGRATION_SUPERSEDES"
 	| "RESOURCE_DEPENDS_ON";
 
 export type CodeGraphSource =
@@ -283,4 +268,5 @@ export interface ValidationCommandSummary {
 export interface WriteCodeGraphOptions {
 	readonly outDir: string;
 	readonly mapPath?: string | undefined;
+	readonly debugJson?: boolean | undefined;
 }

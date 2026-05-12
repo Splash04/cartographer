@@ -16,7 +16,23 @@ import {
 	type TraceExpectationCheck,
 	type TraceExpectationInput,
 } from "./adoption.ts";
-import { checkCodeGraphArtifacts, writeCodeGraphArtifacts, readCodeGraph, type CodeGraphArtifactCompatibility } from "./artifacts.ts";
+import {
+	checkCodeGraphArtifacts,
+	readCodeGraph,
+	writeCodeGraphArtifacts,
+	writeDebugJsonGraph,
+	writeJsonlGraphExports,
+	type CodeGraphArtifactCompatibility,
+} from "./artifacts.ts";
+import {
+	buildRemovalAudit,
+	readAuditLedger,
+	renderAuditLedgerMarkdown,
+	verifyRemovalAudit,
+	writeAuditLedger,
+	type AuditLedger,
+} from "./audit.ts";
+import { buildBrief, renderBriefPrompt, type BriefFormat, type BriefMode } from "./brief.ts";
 import { buildCodeGraph } from "./builder.ts";
 import {
 	buildGraphContext,
@@ -37,9 +53,16 @@ import {
 	type AnnotationOverlayAudit,
 	type AnnotationOverlayLoadResult,
 } from "./overlays.ts";
+import {
+	auditNotes,
+	ingestNotesReport,
+	reviewNote,
+	type NoteReviewResult,
+	type NotesIngestResult,
+} from "./notes.ts";
 import { impactGraph, renderSlice, sliceGraph, summarizeGraph } from "./query.ts";
 import { runCartographerPreflight, type CartographerPreflightResult } from "./preflight.ts";
-import type { AgentAnnotation, GraphContext, GraphContextCompact } from "./types.ts";
+import type { AgentAnnotation, GraphContext, GraphContextCompact, GraphSlice } from "./types.ts";
 
 type CartographerHandler = (args: ParsedArgs) => Promise<Result<void, HarnessError>>;
 
@@ -55,6 +78,10 @@ const cartographerHandlers: Record<string, CartographerHandler> = {
 	update: runIndex,
 	verify: runVerify,
 	view: runView,
+	brief: runBrief,
+	audit: runAudit,
+	notes: runNotes,
+	export: runExport,
 	diff: runDiff,
 	slice: runSlice,
 	impact: runImpact,
@@ -90,10 +117,10 @@ async function runMcp(): Promise<Result<void, HarnessError>> {
 async function runIndex(args: ParsedArgs): Promise<Result<void, HarnessError>> {
 	try {
 		const root = flagString(args, "root", ".");
-		const outDir = flagString(args, "out", "docs/codegraph");
+		const outDir = graphOutDir(args);
 		const maxFileBytes = numberFlag(args, "max-file-bytes", 750_000);
 		const graph = await buildCodeGraph({ root, maxFileBytes });
-		await writeCodeGraphArtifacts(graph, { outDir, mapPath: mapPath(args, outDir) });
+		await writeCodeGraphArtifacts(graph, { outDir, mapPath: mapPath(args, outDir), debugJson: hasFlag(args, "debug-json") });
 		await writeOut(`${summarizeGraph(graph)}Artifacts: ${outDir}\n`);
 		return ok(undefined);
 	} catch (cause) {
@@ -117,7 +144,7 @@ async function runView(args: ParsedArgs): Promise<Result<void, HarnessError>> {
 
 async function runVerify(args: ParsedArgs): Promise<Result<void, HarnessError>> {
 	try {
-		const outDir = flagString(args, "out", "docs/codegraph");
+		const outDir = graphOutDir(args);
 		const compatibility = await checkCodeGraphArtifacts(outDir);
 		const freshness = hasFlag(args, "fresh") ? await graphFreshnessCheck(args, outDir) : undefined;
 		const output = verifyOutput(compatibility, freshness);
@@ -133,6 +160,216 @@ async function runVerify(args: ParsedArgs): Promise<Result<void, HarnessError>> 
 	} catch (cause) {
 		return err(HarnessError.from("INTERNAL", cause));
 	}
+}
+
+async function runBrief(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	try {
+		const graph = await loadGraph(args);
+		const auditRef = optionalFlagString(args, "audit");
+		const auditLedger = auditRef === undefined ? undefined : await resolveAuditLedger(args, auditRef);
+		const packet = buildBrief(graph, {
+			mode: modeFlag(args),
+			path: optionalFlagString(args, "path"),
+			packageId: optionalFlagString(args, "package"),
+			env: optionalFlagString(args, "env"),
+			db: optionalFlagString(args, "db"),
+			iac: optionalFlagString(args, "iac"),
+			audit: auditRef,
+			auditLedger,
+			changed: hasFlag(args, "changed"),
+			depth: optionalNumberFlag(args, "depth") ?? 1,
+			requestedTokens: numberFlag(args, "budget", 8_000),
+			live: hasFlag(args, "live"),
+			limits: briefLimitsFromArgs(args),
+		});
+		const format = briefFormat(args);
+		await writeOut(format === "json" ? `${JSON.stringify(packet, null, 2)}\n` : renderBriefPrompt(packet));
+		return ok(undefined);
+	} catch (cause) {
+		if (cause instanceof HarnessError) return err(cause);
+		return err(HarnessError.from("INTERNAL", cause));
+	}
+}
+
+async function resolveAuditLedger(args: ParsedArgs, auditRef: string): Promise<AuditLedger> {
+	const direct = Bun.file(auditRef);
+	if (await direct.exists()) return readAuditLedger(auditRef);
+	const outDir = graphOutDir(args);
+	const filename = auditRef.endsWith(".json") ? auditRef : `${auditRef}.json`;
+	const path = join(outDir, "audits", filename);
+	if (await Bun.file(path).exists()) return readAuditLedger(path);
+	throw new HarnessError("VALIDATION_FAILED", `audit ledger not found: ${auditRef}`);
+}
+
+async function runExport(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	try {
+		const target = args.positionals[1] ?? "graph";
+		if (target !== "graph") throw new HarnessError("VALIDATION_FAILED", "usage: cartographer export graph --format debug-json|jsonl");
+		const graph = await readCodeGraph(flagString(args, "from", DEFAULT_OUT_DIR));
+		const format = flagString(args, "format", "debug-json");
+		const out = flagString(args, "out", defaultExportOut(format));
+		if (format === "debug-json") {
+			await writeDebugJsonGraph(graph, out);
+			await writeOut(`Exported debug graph JSON to ${out}\n`);
+			return ok(undefined);
+		}
+		if (format === "jsonl") {
+			await writeJsonlGraphExports(graph, out);
+			await writeOut(`Exported graph JSONL to ${out}\n`);
+			return ok(undefined);
+		}
+		throw new HarnessError("VALIDATION_FAILED", `unsupported export format: ${format}`);
+	} catch (cause) {
+		if (cause instanceof HarnessError) return err(cause);
+		return err(HarnessError.from("INTERNAL", cause));
+	}
+}
+
+async function runAudit(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	try {
+		const action = args.positionals[1] ?? "help";
+		if (action === "removal") return runRemovalAudit(args);
+		if (action === "verify") return runAuditVerify(args);
+		throw new HarnessError(
+			"VALIDATION_FAILED",
+			"usage: cartographer audit removal --target <target> | cartographer audit verify --ledger <ledger>",
+		);
+	} catch (cause) {
+		if (cause instanceof HarnessError) return err(cause);
+		return err(HarnessError.from("INTERNAL", cause));
+	}
+}
+
+async function runRemovalAudit(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	const graph = await loadBaseGraph(args);
+	const target = requiredFlag(args, "target", "usage: cartographer audit removal --target supabase");
+	const ledger = await buildRemovalAudit(graph, {
+		target,
+		id: optionalFlagString(args, "id"),
+		expectedAuthReplacement: optionalFlagString(args, "auth-replacement"),
+		expectedDbReplacement: optionalFlagString(args, "db-replacement"),
+	});
+	await maybeWriteLedger(args, ledger);
+	await writeAuditOutput(args, ledger);
+	return ok(undefined);
+}
+
+async function runAuditVerify(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	const graph = await loadBaseGraph(args);
+	const ledgerPath = requiredFlag(args, "ledger", "usage: cartographer audit verify --ledger .cartographer/audits/<id>.json");
+	const verified = await verifyRemovalAudit(graph, await readAuditLedger(ledgerPath), {
+		failOnLeftovers: hasFlag(args, "fail-on-leftovers"),
+	});
+	await maybeWriteLedger(args, verified);
+	await writeAuditOutput(args, verified);
+	if (verified.verdict.status === "failed") {
+		return err(
+			new HarnessError("VALIDATION_FAILED", `audit verification failed: ${verified.verdict.blockers.join("; ")}`),
+		);
+	}
+	return ok(undefined);
+}
+
+async function maybeWriteLedger(args: ParsedArgs, ledger: AuditLedger): Promise<void> {
+	const writePath = optionalFlagString(args, "write");
+	if (writePath === undefined) return;
+	await writeAuditLedger(writePath, ledger);
+}
+
+async function writeAuditOutput(args: ParsedArgs, ledger: AuditLedger): Promise<void> {
+	const format = auditFormat(args);
+	await writeOut(format === "json" ? `${JSON.stringify(ledger, null, 2)}\n` : renderAuditLedgerMarkdown(ledger));
+}
+
+function auditFormat(args: ParsedArgs): "json" | "markdown" {
+	if (hasFlag(args, "json")) return "json";
+	const format = flagString(args, "format", "markdown");
+	return format === "json" ? "json" : "markdown";
+}
+
+async function runNotes(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	try {
+		const action = args.positionals[1] ?? "audit";
+		if (action === "ingest") return runNotesIngest(args);
+		if (action === "audit") return runNotesAudit(args);
+		if (action === "accept" || action === "retire") return runNotesReview(args, action);
+		throw new HarnessError(
+			"VALIDATION_FAILED",
+			"usage: cartographer notes ingest <report.json> | notes audit | notes accept <id> --reviewer <name> | notes retire <id> --reviewer <name>",
+		);
+	} catch (cause) {
+		if (cause instanceof HarnessError) return err(cause);
+		return err(HarnessError.from("INTERNAL", cause));
+	}
+}
+
+async function runNotesIngest(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	const reportPath = args.positionals[2] ?? optionalFlagString(args, "report");
+	if (reportPath === undefined) {
+		throw new HarnessError("VALIDATION_FAILED", "usage: cartographer notes ingest <report.json>");
+	}
+	const graph = await loadBaseGraph(args);
+	const result = await ingestNotesReport(graph, {
+		outDir: graphOutDir(args),
+		reportPath,
+		authorName: optionalFlagString(args, "author"),
+		runId: optionalFlagString(args, "run-id"),
+	});
+	await writeNotesIngestResult(args, result);
+	return ok(undefined);
+}
+
+async function runNotesAudit(args: ParsedArgs): Promise<Result<void, HarnessError>> {
+	const graph = await loadBaseGraph(args);
+	const audit = await auditNotes(graph, graphOutDir(args));
+	await writeOut(hasFlag(args, "json") ? `${JSON.stringify(audit, null, 2)}\n` : renderAnnotationOverlayAudit(audit));
+	return ok(undefined);
+}
+
+async function runNotesReview(args: ParsedArgs, action: "accept" | "retire"): Promise<Result<void, HarnessError>> {
+	const noteId = args.positionals[2];
+	if (noteId === undefined) {
+		throw new HarnessError("VALIDATION_FAILED", `usage: cartographer notes ${action} <note-id> --reviewer <name>`);
+	}
+	const reviewer = optionalFlagString(args, "reviewer");
+	if (reviewer === undefined) {
+		throw new HarnessError("VALIDATION_FAILED", "--reviewer is required when reviewing notes");
+	}
+	const result = await reviewNote(await loadBaseGraph(args), graphOutDir(args), { action, noteId, reviewer });
+	await writeNoteReviewResult(args, result);
+	return ok(undefined);
+}
+
+async function writeNotesIngestResult(args: ParsedArgs, result: NotesIngestResult): Promise<void> {
+	if (hasFlag(args, "json")) {
+		await writeOut(`${JSON.stringify(result, null, 2)}\n`);
+		return;
+	}
+	await writeOut(
+		[
+			`Ingested ${result.ingestedCount} candidate note(s)`,
+			`Skipped: ${result.skippedCount}`,
+			`Notes: ${result.notesPath}`,
+			`Audit issues: ${result.audit.summary.issueCount}`,
+			"",
+		].join("\n"),
+	);
+}
+
+async function writeNoteReviewResult(args: ParsedArgs, result: NoteReviewResult): Promise<void> {
+	if (hasFlag(args, "json")) {
+		await writeOut(`${JSON.stringify(result, null, 2)}\n`);
+		return;
+	}
+	await writeOut(
+		[
+			`Reviewed note ${result.noteId}`,
+			`Action: ${result.action}`,
+			`Reviewer: ${result.reviewer}`,
+			`Notes: ${result.notesPath}`,
+			"",
+		].join("\n"),
+	);
 }
 
 interface CodeGraphVerifyOutput extends CodeGraphArtifactCompatibility {
@@ -194,6 +431,7 @@ async function runSlice(args: ParsedArgs): Promise<Result<void, HarnessError>> {
 			"selector",
 			"usage: cartographer slice --selector path:src/index.ts",
 		);
+		rejectBroadSelector(args, selector);
 		const graph = await loadGraph(args);
 		await writeSlice(args, sliceGraph(graph, selector));
 		return ok(undefined);
@@ -206,6 +444,7 @@ async function runSlice(args: ParsedArgs): Promise<Result<void, HarnessError>> {
 async function runImpact(args: ParsedArgs): Promise<Result<void, HarnessError>> {
 	try {
 		const path = requiredFlag(args, "path", "usage: cartographer impact --path src/index.ts");
+		rejectLargeImpact(args);
 		const graph = await loadGraph(args);
 		await writeSlice(args, impactGraph(graph, path, { maxDepth: optionalNumberFlag(args, "depth") }));
 		return ok(undefined);
@@ -221,6 +460,7 @@ async function runContext(args: ParsedArgs): Promise<Result<void, HarnessError>>
 		const graph = await loadGraph(args);
 		const depth = optionalNumberFlag(args, "depth");
 		const selector = flagString(args, "selector", contextSelectorFor(path));
+		rejectBroadSelector(args, selector);
 		await writeContext(args, buildGraphContext(graph, { path, selector, depth }));
 		return ok(undefined);
 	} catch (cause) {
@@ -234,7 +474,7 @@ async function runPreflight(args: ParsedArgs): Promise<Result<void, HarnessError
 		const path = requiredFlag(args, "path", "usage: cartographer preflight --path src/index.ts");
 		const result = await runCartographerPreflight({
 			root: flagString(args, "root", "."),
-			outDir: flagString(args, "out", "docs/codegraph"),
+			outDir: graphOutDir(args),
 			live: hasFlag(args, "live"),
 			path,
 			depth: optionalNumberFlag(args, "depth") ?? 1,
@@ -383,14 +623,14 @@ function enforceTraceExpectations(expectationCheck: TraceExpectationCheck | unde
 
 async function writeSlice(args: ParsedArgs, slice: ReturnType<typeof sliceGraph>): Promise<void> {
 	if (hasFlag(args, "json")) {
-		await writeOut(`${JSON.stringify(slice, null, 2)}\n`);
+		await writeOut(`${JSON.stringify(hasFlag(args, "debug-graph") ? slice : compactSliceOutput(slice), null, 2)}\n`);
 		return;
 	}
 	await writeOut(renderSlice(slice));
 }
 
 async function writeContext(args: ParsedArgs, context: GraphContext): Promise<void> {
-	if (hasFlag(args, "compact")) {
+	if (hasFlag(args, "compact") || !hasFlag(args, "debug-graph")) {
 		const compact = compactGraphContext(context);
 		await writeOut(hasFlag(args, "json") ? `${JSON.stringify(compact, null, 2)}\n` : renderCompactContext(compact));
 		return;
@@ -843,7 +1083,7 @@ function requireOpenRouterApiKey(): string {
 }
 
 async function writeAnnotationOverlay(args: ParsedArgs, annotations: readonly unknown[]): Promise<string> {
-	const outDir = flagString(args, "out", "docs/codegraph");
+	const outDir = graphOutDir(args);
 	const overlayDir = join(outDir, "overlays");
 	await mkdir(overlayDir, { recursive: true });
 	const overlayPath = join(overlayDir, "agent-notes.jsonl");
@@ -869,7 +1109,7 @@ async function loadGraph(args: ParsedArgs) {
 }
 
 async function loadBaseGraph(args: ParsedArgs) {
-	const outDir = flagString(args, "out", "docs/codegraph");
+	const outDir = graphOutDir(args);
 	if (hasFlag(args, "live")) {
 		return buildCodeGraph({
 			root: flagString(args, "root", "."),
@@ -880,7 +1120,7 @@ async function loadBaseGraph(args: ParsedArgs) {
 }
 
 async function loadAnnotationOverlay(args: ParsedArgs) {
-	return readAnnotationOverlay(flagString(args, "out", "docs/codegraph"));
+	return readAnnotationOverlay(graphOutDir(args));
 }
 
 function mapPath(args: ParsedArgs, outDir: string): string | undefined {
@@ -888,6 +1128,78 @@ function mapPath(args: ParsedArgs, outDir: string): string | undefined {
 	if (value === false) return undefined;
 	if (typeof value === "string") return value;
 	return join(outDir, "CODEBASE_MAP.md");
+}
+
+function graphOutDir(args: ParsedArgs): string {
+	return flagString(args, "out", DEFAULT_OUT_DIR);
+}
+
+function defaultExportOut(format: string): string {
+	return format === "jsonl" ? `${DEFAULT_OUT_DIR}/exports` : `${DEFAULT_OUT_DIR}/exports/graph.debug.json`;
+}
+
+function briefFormat(args: ParsedArgs): BriefFormat {
+	if (hasFlag(args, "json")) return "json";
+	const format = flagString(args, "format", "prompt");
+	return format === "json" ? "json" : "prompt";
+}
+
+function modeFlag(args: ParsedArgs): BriefMode {
+	const mode = flagString(args, "mode", "implementation");
+	if (mode === "planning" || mode === "implementation" || mode === "review" || mode === "prd") return mode;
+	throw new HarnessError("VALIDATION_FAILED", `unsupported brief mode: ${mode}`);
+}
+
+function briefLimitsFromArgs(args: ParsedArgs) {
+	return {
+		primaryPaths: numberFlag(args, "max-paths", 15),
+		impactPaths: numberFlag(args, "max-impact", 25),
+		testPaths: numberFlag(args, "max-tests", 20),
+		packages: numberFlag(args, "max-packages", 10),
+		validationCommands: numberFlag(args, "max-validation", 12),
+		notes: numberFlag(args, "max-notes", 10),
+		findings: numberFlag(args, "max-findings", 20),
+	};
+}
+
+function rejectBroadSelector(args: ParsedArgs, selector: string): void {
+	if (hasFlag(args, "allow-broad") || hasFlag(args, "debug-graph")) return;
+	if (!isBroadSelector(selector)) return;
+	throw new HarnessError(
+		"VALIDATION_FAILED",
+		`selector "${selector}" is broad; use a precise selector, --allow-broad, or --debug-graph`,
+	);
+}
+
+function rejectLargeImpact(args: ParsedArgs): void {
+	if (hasFlag(args, "allow-large-output") || hasFlag(args, "debug-graph")) return;
+	const depth = optionalNumberFlag(args, "depth");
+	if (depth !== undefined && depth > 2) {
+		throw new HarnessError("VALIDATION_FAILED", "impact depth above 2 requires --allow-large-output or --debug-graph");
+	}
+}
+
+function isBroadSelector(selector: string): boolean {
+	if (selector === "all") return true;
+	if (selector.startsWith("kind:")) return true;
+	const hasKnownScope = [
+		"path:",
+		"package:",
+		"env:",
+		"dbfunction:",
+		"dbpolicy:",
+		"dbtable:",
+		"dbtrigger:",
+		"config:",
+		"dirty:",
+		"file:",
+		"iacmodule:",
+		"iacresource:",
+		"migration:",
+		"script:",
+		"symbol:",
+	].some((prefix) => selector.startsWith(prefix));
+	return !hasKnownScope && !selector.includes(":");
 }
 
 function requiredFlag(args: ParsedArgs, name: string, message: string): string {
@@ -916,30 +1228,48 @@ function cartographerHelp(): string {
 		"",
 		"Subcommands:",
 		"  mcp        Run the thin MCP stdio wrapper over Cartographer CLI operations",
-		"  index      Build docs/codegraph/{schema,manifest,graph}.json and CODEBASE_MAP.md",
+		"  index      Build .cartographer/{manifest.json,graph.sqlite,schema/*} and CODEBASE_MAP.md",
 		"  update     Rebuild the graph artifacts in place",
 		"  verify     Check graph artifact compatibility and structural integrity",
 		"  view       Show graph summary from --out",
+		"  brief      Emit bounded agent-facing graph context",
+		"  audit      Build or verify task-specific evidence ledgers",
+		"  notes      Ingest, audit, accept, or retire evidence-backed notes",
+		"  export     Export debug graph data explicitly",
 		"  diff       Diff two graph artifact directories with --base and --head",
 		"  slice      Show a task slice, e.g. --selector path:src/index.ts",
 		"  impact     Show incoming impact for --path src/index.ts",
 		"  context    Show slice plus impact context for --path src/index.ts",
 		"  preflight  Agent pre-edit context: compact JSON, depth 1 by default",
 		"  adoption   Summarize graph-command adoption from a RuntimeEvent trace",
-		"  annotate   Use OpenRouter to write candidate overlay notes",
-		"  annotations Audit semantic overlay notes against the current graph",
+		"  annotate   Legacy OpenRouter flow for candidate overlay notes",
+		"  annotations Legacy audit/review surface for semantic overlay notes",
 		"",
 		"Options:",
 		"  --root <path>              Repo root for live/index mode. Default: .",
-		"  --out <path>               Graph artifact directory. Default: docs/codegraph",
+		"  --out <path>               Graph artifact directory. Default: .cartographer",
+		"  --from <path>              Graph artifact directory for export. Default: .cartographer",
 		"  --base <path>              Base graph artifact directory for diff",
 		"  --head <path>              Head graph artifact directory for diff",
 		"  --map <path>               Map output path. Default: <out>/CODEBASE_MAP.md",
+		"  --format <format>          brief: prompt|json; export graph: debug-json|jsonl",
+		"  --budget <tokens>          Brief target token budget. Default: 8000",
+		"  --max-paths <n>            Brief read-first path cap. Default: 15",
+		"  --max-impact <n>           Brief impact path cap. Default: 25",
+		"  --max-tests <n>            Brief test path cap. Default: 20",
+		"  --max-validation <n>       Brief validation command cap. Default: 12",
+		"  --mode <mode>              Brief mode: planning|implementation|review|prd",
+		"  --target <target>          For audit removal, target dependency/service name",
+		"  --ledger <path>            For audit verify, ledger JSON path",
+		"  --write <path>             Write audit ledger JSON to this path",
+		"  --fail-on-leftovers        For audit verify, fail when active leftovers remain",
+		"  --author <name>            For notes ingest, agent or human author name",
+		"  --run-id <id>              For notes ingest, source run id",
 		"  --selector <selector>      all, path:<path>, package:<path-or-name>, kind:<node-kind>, node id, or text",
 		"  --path <path>              File path or node id for impact/context",
 		"  --trace <path>             RuntimeEvent[] JSON trace for adoption analysis",
 		"  --depth <n>                Limit impact traversal depth. Default: unbounded",
-		"  --json                     Emit JSON for view, slice, impact, context, adoption, and annotations",
+		"  --json                     Emit JSON for view, brief, audit, notes, slice, impact, context, adoption, and annotations",
 		"  --fresh                    For verify, compare artifacts against a live graph from --root",
 		"  --require-graph-first      For adoption, fail if graph was unused, preflight failed, or repo source was read before graph context",
 		"  --expect-text <text>       For adoption, fail if final trace text omits this text. Repeatable",
@@ -950,13 +1280,40 @@ function cartographerHelp(): string {
 		"  --retire <annotation-id>  For annotations, retire an annotation",
 		"  --reviewer <name>         Reviewer name required with --accept or --retire",
 		"  --compact                  For context, omit nested slice/impact payloads and keep totals only",
-		"  --live                     Build in memory instead of reading <out>/graph.json",
+		"  --allow-broad              Permit broad slice/context selectors",
+		"  --allow-large-output       Permit impact depth above normal cap",
+		"  --debug-graph              Emit full nested graph payloads for debug/evals",
+		"  --debug-json               For index, also write exports/graph.debug.json",
+		"  --live                     Build in memory instead of reading <out>/graph.sqlite",
 		"  --dry-run                  For annotate, render the slice without calling OpenRouter",
 		"  --model <model>            OpenRouter model. Default: openai/gpt-5.5",
 		"  --max-file-bytes <bytes>   Max text bytes read per file. Default: 750000",
 		"",
 	].join("\n");
 }
+
+function compactSliceOutput(slice: GraphSlice): Record<string, unknown> {
+	const paths = slice.nodes.flatMap((node) => (node.path === undefined ? [] : [node.path]));
+	return {
+		selector: slice.selector,
+		title: slice.title,
+		totals: {
+			nodes: slice.nodes.length,
+			edges: slice.edges.length,
+			findings: slice.findings.length,
+		},
+		paths: [...new Set(paths)].slice(0, 50),
+		summary: slice.summary,
+		findings: slice.findings.slice(0, 20),
+		omissions: {
+			paths: Math.max(0, new Set(paths).size - 50),
+			nodes: Math.max(0, slice.nodes.length - 50),
+			edges: slice.edges.length,
+		},
+	};
+}
+
+const DEFAULT_OUT_DIR = ".cartographer";
 
 const runtimeEventTypes = new Set<unknown>([
 	"status",

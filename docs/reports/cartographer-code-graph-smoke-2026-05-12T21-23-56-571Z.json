@@ -1,0 +1,313 @@
+{
+  "runId": "cartographer-code-graph-smoke-2026-05-12T21-23-56-571Z",
+  "profile": "smoke",
+  "status": "passed",
+  "startedAt": "2026-05-12T21:23:56.571Z",
+  "finishedAt": "2026-05-12T21:23:57.765Z",
+  "durationMs": 1194,
+  "options": {
+    "profile": "smoke",
+    "targetRoot": "/Users/saint/dev/agent-runtime-kernel",
+    "reportDir": "/Users/saint/Dev/cartographer-plugin/docs/reports",
+    "outBase": "/tmp/cartographer-code-graph-evals",
+    "maxFileBytes": 500000,
+    "traceSuite": "/Users/saint/Dev/cartographer-plugin/.evals/fixtures/codex-traces/cases.json",
+    "live": false,
+    "codexPath": "codex"
+  },
+  "environment": {
+    "cwd": "/Users/saint/Dev/cartographer-plugin",
+    "platform": "darwin",
+    "arch": "arm64",
+    "bunVersion": "1.3.8",
+    "git": {
+      "commit": "f22c2223a3ef64eff58a176af2ba695402020990",
+      "dirty": true
+    }
+  },
+  "researchGrounding": [
+    "docs/evals/cartographer-code-graph-eval-suites.md",
+    "docs/evals/cartographer-code-graph-completion-audit.md",
+    "docs/evals/cartographer-code-graph-plan-integrity-audit.md",
+    ".evals/research/cartographer-code-graph-trace-survey.md",
+    ".evals/research/cartographer-axia-stress-run.md",
+    ".evals/fixtures/codex-traces/cases.json",
+    "codex exec --json --ephemeral"
+  ],
+  "suites": [
+    {
+      "id": "graph-contract:self",
+      "title": "self graph contract",
+      "status": "passed",
+      "startedAt": "2026-05-12T21:23:56.573Z",
+      "finishedAt": "2026-05-12T21:23:56.728Z",
+      "durationMs": 155,
+      "checks": [
+        {
+          "id": "schema-valid",
+          "status": "passed",
+          "summary": "graph snapshot validates",
+          "metrics": {
+            "durationMs": 104,
+            "files": 95,
+            "nodes": 1248,
+            "edges": 1809,
+            "findings": 0,
+            "gitDirty": true
+          }
+        },
+        {
+          "id": "unique-node-ids",
+          "status": "passed",
+          "summary": "no duplicate node ids",
+          "metrics": {
+            "count": 1248
+          }
+        },
+        {
+          "id": "unique-edge-ids",
+          "status": "passed",
+          "summary": "no duplicate edge ids",
+          "metrics": {
+            "count": 1809
+          }
+        },
+        {
+          "id": "edge-endpoints-exist",
+          "status": "passed",
+          "summary": "all edge endpoints exist",
+          "metrics": {
+            "edgeCount": 1809
+          }
+        },
+        {
+          "id": "no-default-ignored-paths",
+          "status": "passed",
+          "summary": "ignored output paths are excluded"
+        },
+        {
+          "id": "no-env-secret-values",
+          "status": "passed",
+          "summary": "env var nodes do not expose raw values"
+        }
+      ]
+    },
+    {
+      "id": "graph-contract:ark",
+      "title": "ark graph contract",
+      "status": "passed",
+      "startedAt": "2026-05-12T21:23:56.728Z",
+      "finishedAt": "2026-05-12T21:23:57.217Z",
+      "durationMs": 489,
+      "checks": [
+        {
+          "id": "schema-valid",
+          "status": "passed",
+          "summary": "graph snapshot validates",
+          "metrics": {
+            "durationMs": 316,
+            "files": 713,
+            "nodes": 4402,
+            "edges": 10478,
+            "findings": 0,
+            "gitDirty": false
+          }
+        },
+        {
+          "id": "unique-node-ids",
+          "status": "passed",
+          "summary": "no duplicate node ids",
+          "metrics": {
+            "count": 4402
+          }
+        },
+        {
+          "id": "unique-edge-ids",
+          "status": "passed",
+          "summary": "no duplicate edge ids",
+          "metrics": {
+            "count": 10478
+          }
+        },
+        {
+          "id": "edge-endpoints-exist",
+          "status": "passed",
+          "summary": "all edge endpoints exist",
+          "metrics": {
+            "edgeCount": 10478
+          }
+        },
+        {
+          "id": "no-default-ignored-paths",
+          "status": "passed",
+          "summary": "ignored output paths are excluded"
+        },
+        {
+          "id": "no-env-secret-values",
+          "status": "passed",
+          "summary": "env var nodes do not expose raw values"
+        }
+      ]
+    },
+    {
+      "id": "brief-packet:self",
+      "title": "bounded brief packet",
+      "status": "passed",
+      "startedAt": "2026-05-12T21:23:57.217Z",
+      "finishedAt": "2026-05-12T21:23:57.329Z",
+      "durationMs": 112,
+      "checks": [
+        {
+          "id": "schema-version",
+          "status": "passed",
+          "summary": "brief packet has expected schema"
+        },
+        {
+          "id": "budget-compliance",
+          "status": "passed",
+          "summary": "brief stayed under requested token budget",
+          "metrics": {
+            "estimatedTokens": 2710,
+            "requestedTokens": 8000,
+            "omissions": 1
+          }
+        },
+        {
+          "id": "anchor-first",
+          "status": "passed",
+          "summary": "path brief ranks the selected path first",
+          "metrics": {
+            "nodeId": "file:src/code-graph/commands.ts",
+            "kind": "File"
+          }
+        },
+        {
+          "id": "bounded-sections",
+          "status": "passed",
+          "summary": "brief sections are bounded",
+          "metrics": {
+            "readFirst": 15,
+            "impact": 11,
+            "validation": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "removal-audit:fixture",
+      "title": "removal audit fixture",
+      "status": "passed",
+      "startedAt": "2026-05-12T21:23:57.329Z",
+      "finishedAt": "2026-05-12T21:23:57.372Z",
+      "durationMs": 43,
+      "checks": [
+        {
+          "id": "ledger-schema",
+          "status": "passed",
+          "summary": "removal ledger has expected schema"
+        },
+        {
+          "id": "evidence-class-recall",
+          "status": "passed",
+          "summary": "fixture audit found seeded evidence classes"
+        },
+        {
+          "id": "fail-on-leftovers",
+          "status": "passed",
+          "summary": "audit verify fails closed when leftovers remain",
+          "metrics": {
+            "blockers": [
+              "2 active package-dependency hit(s) remain",
+              "2 active import-or-sdk-client hit(s) remain",
+              "2 active client-wrapper hit(s) remain",
+              "3 active env-var hit(s) remain",
+              "1 active ci-secret-name hit(s) remain",
+              "1 active rls-policy hit(s) remain"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "notes-lifecycle:fixture",
+      "title": "notes lifecycle fixture",
+      "status": "passed",
+      "startedAt": "2026-05-12T21:23:57.372Z",
+      "finishedAt": "2026-05-12T21:23:57.463Z",
+      "durationMs": 91,
+      "checks": [
+        {
+          "id": "ingest-candidate",
+          "status": "passed",
+          "summary": "notes ingest creates candidate notes",
+          "metrics": {
+            "noteId": "note:a26f52da65ae421d"
+          }
+        },
+        {
+          "id": "accept-grounded",
+          "status": "passed",
+          "summary": "audit-clean candidate can be accepted",
+          "metrics": {
+            "noteId": "note:a26f52da65ae421d"
+          }
+        },
+        {
+          "id": "stale-after-drift",
+          "status": "passed",
+          "summary": "accepted note becomes stale after evidence hash drift",
+          "metrics": {
+            "noteId": "note:a26f52da65ae421d"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ark-preflight",
+      "title": "ARK read-only preflight navigation",
+      "status": "passed",
+      "startedAt": "2026-05-12T21:23:57.463Z",
+      "finishedAt": "2026-05-12T21:23:57.765Z",
+      "durationMs": 302,
+      "checks": [
+        {
+          "id": "target-path-present",
+          "status": "passed",
+          "summary": "target path appears in primary paths"
+        },
+        {
+          "id": "focused-tests-present",
+          "status": "passed",
+          "summary": "focused test paths are present"
+        },
+        {
+          "id": "focused-commands-first",
+          "status": "passed",
+          "summary": "focused validation commands lead compact context"
+        },
+        {
+          "id": "compact-command-limit-recorded",
+          "status": "passed",
+          "summary": "compact validation command limit is recorded",
+          "metrics": {
+            "limit": 20,
+            "omitted": 136,
+            "emitted": 20
+          }
+        },
+        {
+          "id": "preflight-timings-recorded",
+          "status": "passed",
+          "summary": "preflight timing phases recorded",
+          "metrics": {
+            "durationMs": 302,
+            "loadGraphMs": 290,
+            "buildContextMs": 11,
+            "renderPromptMs": 1
+          }
+        }
+      ]
+    }
+  ],
+  "failures": []
+}

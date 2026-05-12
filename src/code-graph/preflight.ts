@@ -81,7 +81,7 @@ function resolvePreflightInput(input: CartographerPreflightInput): ResolvedCarto
 }
 
 async function loadPreflightGraph(input: ResolvedCartographerPreflightInput): Promise<CodeGraphSnapshot> {
-	const outDir = input.outDir === undefined ? resolve(input.root, "docs/codegraph") : resolve(input.root, input.outDir);
+	const outDir = input.outDir === undefined ? resolve(input.root, ".cartographer") : resolve(input.root, input.outDir);
 	const graph = input.live
 		? await buildCodeGraph({ root: input.root, maxFileBytes: input.maxFileBytes ?? 750_000 })
 		: await readCodeGraph(outDir);

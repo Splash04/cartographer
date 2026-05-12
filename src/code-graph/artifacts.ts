@@ -2,25 +2,59 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { countBy } from "./collections.ts";
 import { CODE_GRAPH_SCHEMA_VERSION } from "./types.ts";
-import { codeGraphJsonSchema, codeGraphSnapshotSchema } from "./schema.ts";
+import {
+	auditLedgerJsonSchema,
+	briefJsonSchema,
+	codeGraphJsonSchema,
+	codeGraphSnapshotSchema,
+	notesJsonSchema,
+} from "./schema.ts";
 import { summarizeGraph } from "./query.ts";
+import {
+	graphSqlitePath,
+	readSqliteCodeGraph,
+	sqliteCodeGraphExists,
+	sqliteIntegrityCheck,
+	writeSqliteCodeGraph,
+} from "./sqlite-store.ts";
 import type { CodeGraphSnapshot, WriteCodeGraphOptions } from "./types.ts";
 
 export async function writeCodeGraphArtifacts(graph: CodeGraphSnapshot, options: WriteCodeGraphOptions): Promise<void> {
 	const parsed = codeGraphSnapshotSchema.parse(graph);
 	await mkdir(options.outDir, { recursive: true });
-	await Bun.write(join(options.outDir, "schema.json"), `${JSON.stringify(codeGraphJsonSchema(), null, 2)}\n`);
+	await writeSchemaArtifacts(options.outDir);
 	await Bun.write(join(options.outDir, "manifest.json"), `${JSON.stringify(parsed.manifest, null, 2)}\n`);
-	await Bun.write(join(options.outDir, "graph.json"), `${JSON.stringify(parsed, null, 2)}\n`);
+	await writeSqliteCodeGraph(parsed, options.outDir);
+	if (options.debugJson === true) await writeDebugJsonGraph(parsed, join(options.outDir, "exports", "graph.debug.json"));
 	const mapPath = options.mapPath ?? join(options.outDir, "CODEBASE_MAP.md");
 	await mkdir(dirname(mapPath), { recursive: true });
 	await Bun.write(mapPath, renderMap(parsed));
 }
 
 export async function readCodeGraph(outDir: string): Promise<CodeGraphSnapshot> {
+	if (await sqliteCodeGraphExists(outDir)) return readSqliteCodeGraph(outDir);
 	const graphPath = join(outDir, "graph.json");
 	const raw = await Bun.file(graphPath).json();
 	return codeGraphSnapshotSchema.parse(raw);
+}
+
+export async function writeDebugJsonGraph(graph: CodeGraphSnapshot, outputPath: string): Promise<void> {
+	const parsed = codeGraphSnapshotSchema.parse(graph);
+	await mkdir(dirname(outputPath), { recursive: true });
+	await Bun.write(outputPath, `${JSON.stringify(parsed, null, 2)}\n`);
+}
+
+export async function writeJsonlGraphExports(graph: CodeGraphSnapshot, outDir: string): Promise<void> {
+	const parsed = codeGraphSnapshotSchema.parse(graph);
+	await mkdir(outDir, { recursive: true });
+	await Bun.write(
+		join(outDir, "nodes.jsonl"),
+		parsed.nodes.map((node) => JSON.stringify({ type: "node", ...node })).join("\n") + "\n",
+	);
+	await Bun.write(
+		join(outDir, "edges.jsonl"),
+		parsed.edges.map((edge) => JSON.stringify({ type: "edge", ...edge })).join("\n") + "\n",
+	);
 }
 
 export interface CodeGraphArtifactCompatibility {
@@ -42,6 +76,7 @@ export interface CodeGraphArtifactCompatibilityIssue {
 	readonly code:
 		| "missing-artifact"
 		| "invalid-json"
+		| "sqlite-integrity-failed"
 		| "schema-version-mismatch"
 		| "schema-validation-failed"
 		| "manifest-mismatch"
@@ -56,19 +91,19 @@ export interface CodeGraphArtifactCompatibilityIssue {
 export async function checkCodeGraphArtifacts(outDir: string): Promise<CodeGraphArtifactCompatibility> {
 	const issues: CodeGraphArtifactCompatibilityIssue[] = [];
 	await checkRequiredArtifacts(outDir, issues);
-	const graphPath = join(outDir, "graph.json");
-	if (!(await Bun.file(graphPath).exists())) return compatibilityResult(outDir, issues);
-	const raw = await readJsonArtifact(graphPath, issues);
-	if (raw === undefined) return compatibilityResult(outDir, issues);
-	const parsed = codeGraphSnapshotSchema.safeParse(raw);
+	await checkSqliteIntegrity(outDir, issues);
+	if (!(await sqliteCodeGraphExists(outDir))) return compatibilityResult(outDir, issues);
+	const graph = await readCodeGraphOrIssue(outDir, issues);
+	if (graph === undefined) return compatibilityResult(outDir, issues);
+	const parsed = codeGraphSnapshotSchema.safeParse(graph);
 	if (!parsed.success) {
 		issues.push({
 			code: "schema-validation-failed",
 			severity: "error",
 			message: parsed.error.issues.map((issue) => issue.message).join("; "),
-			path: join(outDir, "graph.json"),
+			path: graphSqlitePath(outDir),
 		});
-		return compatibilityResult(outDir, issues, schemaVersionFrom(raw));
+		return compatibilityResult(outDir, issues, graph.schemaVersion);
 	}
 	await checkManifestArtifact(outDir, parsed.data, issues);
 	checkManifestConsistency(parsed.data, issues);
@@ -120,7 +155,7 @@ export function renderMap(graph: CodeGraphSnapshot): string {
 		"",
 		"## Agent Notes",
 		"",
-		"Use `cartographer annotate` to generate candidate semantic overlay notes. Agent annotations are not canonical graph facts until reviewed.",
+		"Use `cartographer notes` for evidence-backed semantic overlays. Notes are not canonical graph facts until reviewed.",
 		"",
 	].join("\n");
 }
@@ -129,8 +164,31 @@ function renderNodeList<T>(nodes: readonly T[], renderNode: (node: T) => string)
 	return nodes.length === 0 ? ["- None detected"] : nodes.map(renderNode);
 }
 
+async function readCodeGraphOrIssue(
+	outDir: string,
+	issues: CodeGraphArtifactCompatibilityIssue[],
+): Promise<CodeGraphSnapshot | undefined> {
+	try {
+		return await readCodeGraph(outDir);
+	} catch (cause) {
+		issues.push({
+			code: "schema-validation-failed",
+			severity: "error",
+			message: `could not read graph.sqlite: ${cause instanceof Error ? cause.message : String(cause)}`,
+			path: graphSqlitePath(outDir),
+		});
+		return undefined;
+	}
+}
+
 async function checkRequiredArtifacts(outDir: string, issues: CodeGraphArtifactCompatibilityIssue[]): Promise<void> {
-	for (const name of ["schema.json", "manifest.json", "graph.json"] as const) {
+	for (const name of [
+		"manifest.json",
+		"graph.sqlite",
+		"schema/brief.schema.json",
+		"schema/audit-ledger.schema.json",
+		"schema/notes.schema.json",
+	] as const) {
 		const path = join(outDir, name);
 		if (!(await Bun.file(path).exists())) {
 			issues.push({
@@ -140,6 +198,18 @@ async function checkRequiredArtifacts(outDir: string, issues: CodeGraphArtifactC
 				path,
 			});
 		}
+	}
+}
+
+async function checkSqliteIntegrity(outDir: string, issues: CodeGraphArtifactCompatibilityIssue[]): Promise<void> {
+	const failures = await sqliteIntegrityCheck(outDir);
+	for (const failure of failures) {
+		issues.push({
+			code: "sqlite-integrity-failed",
+			severity: "error",
+			message: failure,
+			path: graphSqlitePath(outDir),
+		});
 	}
 }
 
@@ -173,7 +243,7 @@ async function checkManifestArtifact(
 		issues.push({
 			code: "manifest-mismatch",
 			severity: "error",
-			message: "manifest.json does not match graph.json manifest",
+			message: "manifest.json does not match graph.sqlite manifest",
 			path: manifestPath,
 		});
 	}
@@ -188,7 +258,7 @@ function checkManifestConsistency(
 			code: "schema-version-mismatch",
 			severity: "error",
 			message: `expected schema version ${CODE_GRAPH_SCHEMA_VERSION}`,
-			path: "graph.json",
+			path: "graph.sqlite",
 		});
 	}
 	const packageCount = graph.nodes.filter((node) => node.kind === "Package").length;
@@ -265,16 +335,6 @@ function compatibilityResult(
 	};
 }
 
-function schemaVersionFrom(value: unknown): string | undefined {
-	if (!isRecord(value)) return undefined;
-	const schemaVersion = value["schemaVersion"];
-	return typeof schemaVersion === "string" ? schemaVersion : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function stableJson(value: unknown): string {
 	return JSON.stringify(sortJsonValue(value));
 }
@@ -287,4 +347,16 @@ function sortJsonValue(value: unknown): unknown {
 			.toSorted(([left], [right]) => left.localeCompare(right))
 			.map(([key, entry]) => [key, sortJsonValue(entry)]),
 	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function writeSchemaArtifacts(outDir: string): Promise<void> {
+	await mkdir(join(outDir, "schema"), { recursive: true });
+	await Bun.write(join(outDir, "schema", "brief.schema.json"), `${JSON.stringify(briefJsonSchema(), null, 2)}\n`);
+	await Bun.write(join(outDir, "schema", "audit-ledger.schema.json"), `${JSON.stringify(auditLedgerJsonSchema(), null, 2)}\n`);
+	await Bun.write(join(outDir, "schema", "notes.schema.json"), `${JSON.stringify(notesJsonSchema(), null, 2)}\n`);
+	await Bun.write(join(outDir, "schema.json"), `${JSON.stringify(codeGraphJsonSchema(), null, 2)}\n`);
 }

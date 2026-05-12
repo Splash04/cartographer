@@ -1,120 +1,237 @@
 # Cartographer Code Graph CLI
 
-The Cartographer code graph CLI gives agents a deterministic repo map plus a provider-backed semantic overlay for Codex-style annotation workflows. OpenRouter is the current annotation backend, not the architecture boundary.
+Cartographer v2 is a deterministic repo evidence compiler for coding agents. It gives an intelligent orchestrator a bounded structural map, freshness evidence, validation surfaces, removal/completeness ledgers, and reviewable notes.
 
-The important split is:
+It is not an autonomous planner, task manager, semantic truth database, or grep replacement. Agents still inspect source directly. Cartographer makes the first navigation pass faster and makes large cleanup/migration work easier to audit.
 
-- deterministic graph facts: files, imports, symbols, packages, scripts, SQL/IaC resources, Terraform resource/module dependencies, GitHub Actions workflow tasks, env vars, and git freshness
-- agent overlay notes: purpose, edit warnings, generated ownership, workflow guidance, validation advice, and risk notes
-
-Tree-sitter-style parsing belongs in the first bucket. Codex/OpenRouter annotations belong in the second bucket and must stay evidence-linked, reviewable, and stale-markable. The graph must be useful without annotations; overlay notes add workflow meaning, edit warnings, ownership guidance, and validation recipes after the structural graph has already found the relevant code and IaC surfaces.
-
-## Commands
+## Primary Commands
 
 ```bash
-bun run cartographer:mcp
-bun run cartographer:index -- --root . --out docs/codegraph
-bun run cartographer:update -- --root . --out docs/codegraph
-bun run cartographer:verify -- --out docs/codegraph --root . --fresh
-bun run cartographer:view -- --out docs/codegraph
-bun run cartographer:diff -- --base /tmp/codegraph-before --head docs/codegraph
-bun run cartographer:slice -- --out docs/codegraph --selector path:src/index.ts
-bun run cartographer:slice -- --out docs/codegraph --selector path:src/index.ts --json
-bun run cartographer:impact -- --out docs/codegraph --path src/index.ts
-bun run cartographer:impact -- --out docs/codegraph --path dbtable:public.accounts --depth 1 --json
-bun run cartographer:preflight -- --out docs/codegraph --path src/index.ts
-bun run cartographer:context -- --out docs/codegraph --path src/index.ts --depth 1 --json
-bun run cartographer:context -- --out docs/codegraph --path src/index.ts --depth 1 --compact --json
-bun run cartographer:adoption -- --trace trace.json --json
-bun run cartographer:adoption -- --trace trace.json --require-graph-first
-bun run cartographer:adoption -- --trace trace.json --expect-path src/index.ts --expect-command "bun test" --expect-executed-command "bun test"
-bun run cartographer:annotate -- --out docs/codegraph --selector path:src/index.ts
-bun run cartographer:annotations -- --out docs/codegraph --json
-bun run cartographer:annotations -- --out docs/codegraph --accept <annotation-id> --reviewer <name>
-bun run cartographer:annotations -- --out docs/codegraph --retire <annotation-id> --reviewer <name>
+bun run cartographer:index -- --root . --out .cartographer
+bun run cartographer:verify -- --out .cartographer --root . --fresh --json
+bun run cartographer:brief -- --out .cartographer --path src/index.ts --json
+bun run cartographer:brief -- --out .cartographer --package apps/web --mode planning
+bun run cartographer:brief -- --out .cartographer --audit .cartographer/audits/supabase-removal.json --mode prd
+bun run cartographer:audit -- removal --out .cartographer --target supabase --write .cartographer/audits/supabase-removal.json
+bun run cartographer:audit -- verify --out .cartographer --ledger .cartographer/audits/supabase-removal.json --fail-on-leftovers --json
+bun run cartographer:notes -- ingest subagent-report.json --out .cartographer --author codex-worker
+bun run cartographer:notes -- audit --out .cartographer --json
+bun run cartographer:notes -- accept <note-id> --out .cartographer --reviewer saint
+bun run cartographer:export -- graph --from .cartographer --format debug-json --out .cartographer/exports/graph.debug.json
 ```
 
-The direct binary form is:
+Legacy/debug commands still exist:
 
 ```bash
-bun run src/cli/index.ts cartographer index --root . --out docs/codegraph
+bun run cartographer:slice -- --out .cartographer --selector path:src/index.ts
+bun run cartographer:impact -- --out .cartographer --path src/index.ts --depth 1
+bun run cartographer:context -- --out .cartographer --path src/index.ts --depth 1 --json
+bun run cartographer:preflight -- --out .cartographer --path src/index.ts
+bun run cartographer:adoption -- --trace trace.json --require-graph-first --json
+bun run cartographer:annotations -- --out .cartographer --json
 ```
 
-`verify` is the deterministic artifact compatibility gate. It checks that required artifacts exist, `graph.json` validates against the current schema, `manifest.json` matches the graph manifest, manifest totals match the graph payload, node and edge IDs are unique, and every edge endpoint points at an existing node. Add `--fresh --root <repo>` in CI or scheduled jobs to rebuild the graph in memory and fail when persisted artifacts drift from the live repository.
+`slice`, `impact`, `context`, `preflight`, `adoption`, and `annotations` are compatibility, debug, or harness surfaces. New agent workflows should prefer `brief`, `audit`, and `notes`.
 
-`diff` compares two graph artifact directories and reports added, removed, and changed nodes, edges, findings, and annotations. Use it for branch-update reviews, scheduled graph freshness jobs, and CI receipts that need to prove what changed between snapshots.
+## Artifact Layout
 
-`mcp` runs a thin newline-delimited stdio JSON-RPC wrapper for MCP clients. The wrapper exposes `cartographer_index`, `cartographer_view`, `cartographer_context`, `cartographer_preflight`, `cartographer_verify`, and `cartographer_diff` tools. It calls the same graph library as the CLI and does not move planning, agent management, or graph truth into an MCP server.
-
-Codex and Claude-style runtimes can use the exported `buildCartographerPreflightAdapterPayload` helper when they want preflight to run before an agent turn without asking the model to call the CLI manually. The helper returns the prompt text plus adoption-compatible `tool_use` and `tool_result` runtime events for `cartographer adoption`.
-
-## Outputs
-
-`index` and `update` write:
+`index` writes a durable local graph store:
 
 ```text
-docs/codegraph/schema.json
-docs/codegraph/manifest.json
-docs/codegraph/graph.json
-docs/codegraph/CODEBASE_MAP.md
+.cartographer/
+  manifest.json
+  graph.sqlite
+  schema/
+    brief.schema.json
+    audit-ledger.schema.json
+    notes.schema.json
+  CODEBASE_MAP.md
 ```
 
-The existing top-level `docs/CODEBASE_MAP.md` is not rewritten unless a caller explicitly passes `--map docs/CODEBASE_MAP.md`.
+`graph.json` is no longer a default artifact. Full graph JSON and JSONL are explicit debug exports:
 
-## Agent Flow
+```bash
+bun run cartographer:export -- graph --from .cartographer --format debug-json --out .cartographer/exports/graph.debug.json
+bun run cartographer:export -- graph --from .cartographer --format jsonl --out .cartographer/exports
+```
 
-1. Run `cartographer preflight --path <file-or-node-id>` as the default pre-edit command. It is the agent-facing alias for `cartographer context --path <target> --depth 1 --compact --json`, returning the graph manifest, preflight summary, package ranking, validation commands, and slice/impact totals without shipping full nested graph payloads.
-2. Run `cartographer view` when you need graph freshness and totals without task context.
-3. Run `cartographer slice --selector path:<file>` when you only need local neighbors.
-4. Run `cartographer impact --path <file-or-node-id>` when you only need blast radius. Use `--depth 1` first for broad graph nodes such as database tables, then expand deliberately.
-5. Run relevant tests from the package script and graph context.
-6. For raw agent traces, run `cartographer adoption --trace <runtime-events.json> --json` to summarize whether the agent used graph context before direct source reads. Add `--require-graph-first` when the workflow should fail on no graph command, graph preflight failure, or repo source reads before graph context. Add repeatable `--expect-text`, `--expect-path`, or `--expect-command` flags for manual final-response checks, and `--expect-executed-command` when the trace must show that a tool command actually ran validation.
-7. Use `cartographer annotate` only to create candidate semantic overlay notes.
-8. Run `cartographer annotations --json` before trusting overlay notes. It audits `docs/codegraph/overlays/agent-notes.jsonl` against the current graph, reports parse/schema issues, duplicate annotation IDs, missing target nodes, evidence that does not anchor to the target node, missing evidence paths, and evidence hash drift, and separates review-ready candidates from accepted notes that are still usable.
+## What The Graph Stores
 
-Preflight/context output is the first source of truth for navigation. Accepted overlay notes are additive guidance, and stale notes are warnings. Candidate notes do not enter normal task context until review accepts them.
+Core deterministic facts include:
 
-Use persisted graph mode when you need the committed/indexed snapshot. Use `--live --root <repo>` when the working tree has uncommitted source, tests, or docs that should be included in the current task context. Live mode does not prove committed graph artifacts are current; it is a current-work preflight. Deleted files appear as dirty/deleted manifest metadata and stale-evidence findings rather than normal file nodes unless a future historical diff mode requests them.
+- files, directories, docs, generated artifacts, and dirty artifacts
+- packages, workspaces, package scripts, and external dependencies
+- imports, type imports, exports, and symbols
+- env var names only, never values
+- SQL migrations, tables, functions, policies, and triggers
+- Terraform resources/modules and dependency edges
+- GitHub Actions workflow/job/run-step config nodes
+- test relationships and package validation commands
+- evidence paths, line anchors, file hashes, freshness, and provenance classes
 
-Use `--json` for harnesses, eval runners, and other automated consumers. The markdown output is for humans. `cartographer preflight` always emits compact JSON and is the default graph-first agent preflight; it exposes `manifest`, `summary.primaryPaths`, `summary.impactPaths`, `summary.testPaths`, `summary.affectedPackages`, focused `summary.validationCommands`, `summary.annotationNotes`, `summary.findings`, slice/impact totals, compact-output `omissions`, compact-output `limits`, and a `preflight` metadata block with command, timestamps, total duration, and phase timings. Full `context --json` is the scoring mode when a harness needs nested `slice` and `impact` payloads with `selector`, `title`, `nodes`, `edges`, `annotations`, `findings`, and `summary` fields for recall, precision, slice size, package context, semantic-note coverage, and validation-command coverage. Top-level `summary.testPaths` is derived from `TESTS` edges and gives agents directly relevant test files without forcing them to parse nested edge payloads. `TESTS` edges come from explicit test imports and a conservative `__tests__` naming convention, so a facade-style test can still point agents at the source file it covers when that source file exists. Top-level `summary.annotationNotes` is derived from accepted or stale overlay annotations whose target nodes appear in the selected slice or impact view; candidate and retired notes stay out of normal preflight context. Nested `summary.affectedPackages` ranks owning packages by direct and ancestor coverage, while `summary.validationCommands` lists the package script id, package id, command name, raw package-script body as `command`, root-executable command as `runCommand`, and source `package.json` path. In compact preflight, validation commands are capped and focused for agent navigation; `limits.validationCommands` records the active cap, and `omissions.validationCommands` records how many broader commands were left out. The human preflight brief prefers `runCommand`, so package scripts appear as pasteable Bun invocations such as `bun run typecheck` or `cd apps/web && bun run typecheck` while preserving raw script metadata for tooling. `adoption --json` consumes raw runtime traces shaped as an event array or objects with `events`/`runtimeEvents` and emits the deterministic graph-adoption summary used by future live-agent scoring, including trace duration, first graph command offset, successful preflight result count and timings, shell-wrapped source-read detection, skill-instruction read exclusions, structured graph preflight failures, and first source-read-before-graph offset when timestamps are present. `--require-graph-first` turns that summary into a manual strict gate and includes `graphFirstAdoption` in JSON output. Repeatable `--expect-text`, `--expect-path`, and `--expect-command` flags check the final trace response for expected text, file paths, or validation-command mentions. Repeatable `--expect-executed-command` checks actual tool-command execution. The combined `finalResponseExpectation.metrics` object includes aggregate final-response hits, path tool/source-read hits, command mention hits, and executed-command hits. Expected-path checks also report whether each path appeared in the final response, any tool command, and any direct source-read command, which helps separate "the agent named the file" from "the agent actually navigated to it." Expected-command checks report whether each command appeared in the final response or an actual tool command; executed-command checks fail unless the command appears in tool execution history. These are manual gates, not generated eval reports.
+SQLite is the durable query substrate. Prompt context is compiled from it; agents do not receive the full graph unless a debug export is explicitly requested.
 
-Agent runtimes can opt into the same preflight without asking the model to run the command manually. A runtime wrapper should build compact Cartographer context against the active workspace before adapter execution, inject it into the prompt as a `cartographer-preflight` system reminder, and emit `tool_use`/`tool_result` runtime events shaped so `cartographer adoption --trace` can measure graph use. This is a harness workflow hook, not an eval report.
+## Briefs
 
-Slices and impact views include owning and ancestor packages plus focused validation scripts such as `build`, `lint`, `typecheck`, and `test:*`. Database slices also include safe schema/type/status scripts such as `db:types` and `db:status`; runtime-only or destructive scripts such as `dev`, `start`, `preview`, `postinstall`, `db:reset`, and `db:seed` are intentionally omitted. SQL files under migration paths become `Migration` nodes that connect to tables, functions, policies, and triggers through `MIGRATION_*` edges. Terraform `RESOURCE_DEPENDS_ON` edges connect resource and module nodes to referenced resources/modules, so `impact --path iacresource:<type>:<name>` can show downstream infrastructure that depends on that resource. GitHub Actions workflow files under `.github/workflows/*.yml` and `.github/workflows/*.yaml` become `Config` nodes for workflows, jobs, and `run` steps, with `CONFIGURES` and `TASK_DEPENDS_ON` edges. Run steps are classified as `validation`, `deployment`, or `other` metadata so agents can inspect CI/deploy evidence without Cartographer claiming a full CI task graph. Markdown links and backticked repo paths become `DOCUMENTS` edges when they point at indexed files.
+`brief` is the normal agent-facing interface.
 
-Node-id selectors such as `env:DATABASE_URL`, `dbtable:public.accounts`, `script:.:test`, `symbol:src/index.ts:main`, and `iacresource:aws_s3_bucket:assets` are exact selectors. `config:ci:.github/workflows/ci.yml` selects the workflow config and its job/run descendants. `path:src/index.ts` is accepted in `context --path` and drives both the selected slice and impact view. Use plain text only when broad search is intentional.
+It emits a bounded packet around a path, package, env var, DB object, IaC object, audit ledger, or changed files:
 
-Candidate overlay notes are not source-of-truth graph facts. A later review step should accept, reject, retire, or mark them stale based on cited evidence. Accepted and stale overlay notes are merged into slice/context/preflight output as `annotations` plus compact `summary.annotationNotes`; candidates remain visible only through `cartographer annotations` until reviewed. If an accepted note has missing evidence or a changed evidence hash, the normal graph context downgrades it to `stale` and emits an overlay finding so agents see the risk without running a separate audit first.
+```bash
+bun run cartographer:brief -- --out .cartographer --path src/kernel/turn-executor.ts --mode implementation --budget 8000 --json
+```
 
-## OpenRouter Annotation Backend
+The packet includes:
 
-`annotate` reads `OPENROUTER_API_KEY` from the environment and defaults to `openai/gpt-5.5`.
+- snapshot root, commit, dirty state, freshness, and totals
+- resolved anchor
+- read-first paths
+- impact paths
+- package ownership
+- external dependencies
+- env, DB, IaC, CI, and docs surfaces
+- focused tests
+- safe validation commands
+- accepted notes and stale-note warnings
+- findings, omissions, and continuation commands
 
-The key must not be committed to repo files. The CLI sends a tool-calling request to OpenRouter with a forced `record_annotations` function call, then writes grounded candidate notes to:
+Briefs are path- and reason-centric, not edge dumps. The selected path is ranked first for path briefs. Normal `brief`, `context`, `preflight`, `slice`, and `impact` outputs are bounded; full nested graph payloads require `--debug-graph` or `export graph`.
+
+Brief caps can be tuned without making the packet unbounded:
+
+```bash
+bun run cartographer:brief -- --out .cartographer --path src/index.ts --budget 8000 --max-paths 15 --max-tests 20 --max-validation 12 --json
+```
+
+Broad graph selectors are guarded. Use exact selectors such as `path:`, `package:`, `env:`, `dbtable:`, or `iacresource:` for normal workflows. Debug-wide selectors such as `all` require `--allow-broad` or `--debug-graph`.
+
+Every brief is orientation only. Agents must verify implementation-sensitive claims with direct source reads before editing or making final claims.
+
+## Removal Audits
+
+`audit removal` creates a task-specific completion ledger. This is the main workflow for migrations and removals such as Supabase replacement:
+
+```bash
+bun run cartographer:audit -- removal \
+  --out .cartographer \
+  --target supabase \
+  --write .cartographer/audits/supabase-removal.json \
+  --format json
+```
+
+The ledger checks evidence classes such as:
+
+- package dependencies and lockfiles
+- SDK imports and client wrappers
+- env var names and CI/deploy secret names
+- SQL migrations, RLS policies, functions, triggers, storage, and edge functions
+- generated DB types
+- auth/user model surfaces
+- tests, mocks, fixtures, active docs, historical docs, and unknown literal hits
+- replacement auth/database requirements
+- validation receipts
+
+`audit verify` reruns checks against current source:
+
+```bash
+bun run cartographer:audit -- verify \
+  --out .cartographer \
+  --ledger .cartographer/audits/supabase-removal.json \
+  --fail-on-leftovers \
+  --json
+```
+
+Verification fails closed when active leftovers remain. Retained references need explicit evidence and a reason.
+
+Audit ledgers can also feed PRD or subagent briefing packets:
+
+```bash
+bun run cartographer:brief -- --out .cartographer --audit .cartographer/audits/supabase-removal.json --mode prd --json
+```
+
+## Notes
+
+Notes are reviewable semantic overlays, not graph facts. They are useful when an agent or human finds workflow meaning that static extraction cannot safely infer.
+
+Subagent reports can be ingested:
+
+```json
+{
+  "target": "supabase-removal",
+  "claims": [
+    {
+      "kind": "test-guidance",
+      "summary": "Use the colocated auth tests when changing this client.",
+      "evidence": [{ "path": "apps/web/src/auth/client.ts" }]
+    }
+  ]
+}
+```
+
+```bash
+bun run cartographer:notes -- ingest subagent-report.json --out .cartographer --author codex-worker
+bun run cartographer:notes -- audit --out .cartographer --json
+bun run cartographer:notes -- accept <note-id> --out .cartographer --reviewer saint
+bun run cartographer:notes -- retire <note-id> --out .cartographer --reviewer saint
+```
+
+Notes live at:
 
 ```text
-docs/codegraph/overlays/agent-notes.jsonl
+.cartographer/notes.jsonl
 ```
 
-Use `--dry-run` to render the graph slice without calling OpenRouter.
+Candidates do not enter normal briefs. Accepted notes appear in briefs only while grounded. If cited evidence changes, accepted notes are downgraded to stale warnings.
 
-This backend should only create candidate semantic notes. It must not promote model output into deterministic graph facts, and it should not be the only future path for annotations. A Codex harness, another model provider, or a human reviewer can write the same reviewable overlay shape.
+The legacy `annotations` command remains as a compatibility alias for the older overlay workflow.
 
-A Codex harness should follow the same graph-first contract as normal task execution: inject or run preflight, read the returned slice before raw source exploration, inspect cited source evidence directly, write candidate-only notes, then run `cartographer annotations --json` for a deterministic receipt. OpenRouter-generated notes that do not cite at least one evidence path for their target node are dropped before writing candidates; the audit applies the same rule to hand-written or other-agent overlays. That keeps graph navigation, semantic writeback, and review decisions separately measurable in traces.
+## Monorepo Use
 
-## Annotation Audit And Review
+For large repos, use Cartographer as a map plus audit layer around normal grep/source reads:
 
-`annotations --json` without review flags is read-only. It does not call a model and does not change notes. It gives agents and reviewers a deterministic receipt for whether candidate or accepted notes are still grounded in the current graph:
+1. Build or refresh `.cartographer`.
+2. Run `brief` for the package, file, env var, DB object, IaC resource, or changed files.
+3. Read the returned source files directly.
+4. Use package ownership and validation commands to scope subagent prompts.
+5. For removals/migrations, create an audit ledger before implementation.
+6. Have subagents return evidence-backed notes or ledger updates.
+7. Run `audit verify --fail-on-leftovers` before claiming cleanup is complete.
 
-- `reviewReadyCandidateCount`: candidate notes with known targets and current evidence.
-- `usableAcceptedCount`: accepted notes with known targets and current evidence.
-- `staleRecommendedCount`: candidate or accepted notes that should be refreshed, marked stale, or retired.
-- `issues`: duplicate annotation IDs, target-node misses, evidence-path misses, and evidence hash mismatches.
-- `parseIssues`: invalid JSONL or schema-invalid annotation lines.
+For ARK-style repos with infra, backend, frontend, runtime code, tests, and docs, Cartographer’s leverage is not “show every edge.” The leverage is:
 
-Review mode is explicit and mutating:
+- package/surface partitioning
+- cross-surface evidence classes
+- focused validation discovery
+- stale graph and stale note detection
+- explicit omissions under token budgets
+- completion ledgers for hard migrations
 
-- `annotations --accept <id> --reviewer <name>` promotes an audit-clean candidate to an accepted human-reviewed note.
-- `annotations --retire <id> --reviewer <name>` marks a note retired when it is stale, unsafe, or no longer useful.
+## Agent Runtime Hooks
 
-Use audit mode first, then review mode only when the receipt shows the target and evidence are current. Every reviewable note must cite at least one evidence path that belongs to the node it annotates; cross-file workflow notes should cite both the target and the related file/resource. Candidate notes are not normal graph facts, and accepted notes still become stale when cited evidence changes.
+`preflight` still exists for harnesses that inject graph context before an agent turn. Runtime wrappers can emit adoption-compatible `tool_use` and `tool_result` events so:
+
+```bash
+bun run cartographer:adoption -- --trace runtime-events.json --require-graph-first --json
+```
+
+can measure whether graph context appeared before direct source reads. Adoption is a guardrail, not proof that the outcome is correct.
+
+## Security
+
+- Env var names are indexed. Secret values are not.
+- `.env` handling is conservative.
+- CI/deploy secrets are surfaced by name only.
+- No cloud/runtime drift calls run by default.
+- Notes and audit ledgers cite evidence paths and hashes instead of storing sensitive payloads.
+
+## Verification
+
+Current local checks:
+
+```bash
+bun run typecheck
+bun test src/code-graph
+bun run eval:cartographer:smoke
+```
+
+The smoke eval builds graph contracts for this repo and read-only ARK, then verifies ARK preflight navigation against `src/kernel/turn-executor.ts`.

@@ -22,7 +22,11 @@ describe("runCartographer", () => {
 
 		expect(await Bun.file(join(outDir, "schema.json")).exists()).toBe(true);
 		expect(await Bun.file(join(outDir, "manifest.json")).exists()).toBe(true);
-		expect(await Bun.file(join(outDir, "graph.json")).exists()).toBe(true);
+		expect(await Bun.file(join(outDir, "graph.sqlite")).exists()).toBe(true);
+		expect(await Bun.file(join(outDir, "schema", "brief.schema.json")).exists()).toBe(true);
+		expect(await Bun.file(join(outDir, "schema", "audit-ledger.schema.json")).exists()).toBe(true);
+		expect(await Bun.file(join(outDir, "schema", "notes.schema.json")).exists()).toBe(true);
+		expect(await Bun.file(join(outDir, "graph.json")).exists()).toBe(false);
 		expect(await Bun.file(join(outDir, "CODEBASE_MAP.md")).exists()).toBe(true);
 
 		const viewed = await runCartographer({
@@ -34,7 +38,7 @@ describe("runCartographer", () => {
 
 		const verified = await runCliJson(["cartographer", "verify", "--out", outDir, "--json"]);
 		expect(verified["ok"]).toBe(true);
-		expect(verified["schemaVersion"]).toBe("cartographer.code-graph.v1");
+		expect(verified["schemaVersion"]).toBe("cartographer.graph.v2");
 		expect(arrayField(verified, "issues")).toEqual([]);
 
 		const fresh = await runCliJson([
@@ -107,6 +111,7 @@ describe("runCartographer", () => {
 			outDir,
 			"--selector",
 			"path:src/index.ts",
+			"--debug-graph",
 			"--json",
 		]);
 		const impact = await runCliJson([
@@ -118,6 +123,7 @@ describe("runCartographer", () => {
 			"src/index.ts",
 			"--depth",
 			"0",
+			"--debug-graph",
 			"--json",
 		]);
 
@@ -190,7 +196,16 @@ describe("runCartographer", () => {
 		expect(indexed.ok).toBe(true);
 
 		for (const selector of ["package:apps/web", "package:@fixture/web"]) {
-			const slice = await runCliJson(["cartographer", "slice", "--out", outDir, "--selector", selector, "--json"]);
+			const slice = await runCliJson([
+				"cartographer",
+				"slice",
+				"--out",
+				outDir,
+				"--selector",
+				selector,
+				"--debug-graph",
+				"--json",
+			]);
 
 			expect(slice["selector"]).toBe(selector);
 			expect(nodeIds(slice)).toContain("package:apps/web");
@@ -234,6 +249,7 @@ describe("runCartographer", () => {
 			"src/index.ts",
 			"--depth",
 			"0",
+			"--debug-graph",
 			"--json",
 		]);
 		const slice = recordField(context, "slice");
@@ -337,6 +353,319 @@ describe("runCartographer", () => {
 			"0",
 		]);
 		expect(overridden["depth"]).toBe(0);
+	});
+
+	test("emits bounded brief packets with file-first path records", async () => {
+		const { indexed, outDir } = await indexFixtureRepo();
+		expect(indexed.ok).toBe(true);
+
+		const brief = await runCliJson([
+			"cartographer",
+			"brief",
+			"--out",
+			outDir,
+			"--path",
+			"src/index.ts",
+			"--budget",
+			"8000",
+			"--json",
+		]);
+		const budget = recordField(brief, "budget");
+		const anchor = recordField(brief, "anchor");
+		const readFirst = arrayField(brief, "readFirst");
+		const firstPath = recordAt(readFirst, 0);
+
+		expect(brief["schemaVersion"]).toBe("cartographer.brief.v1");
+		expect(brief["kind"]).toBe("brief");
+		expect(recordField(brief, "snapshot")["root"]).toBe(join(tempDir, "repo"));
+		expect(anchor["selector"]).toBe("path:src/index.ts");
+		expect(numberField(budget, "estimatedTokens")).toBeLessThan(8000);
+		expect(firstPath["path"]).toBe("src/index.ts");
+		expect(firstPath["nodeId"]).toBe("file:src/index.ts");
+		expect(firstPath["kind"]).toBe("File");
+		expect(arrayField(brief, "omissions")).toEqual([]);
+	});
+
+	test("supports env, db, iac, and changed brief anchors", async () => {
+		await mkdir(join(tempDir, "repo/db/migrations"), { recursive: true });
+		await mkdir(join(tempDir, "repo/infra"), { recursive: true });
+		await writeFile(
+			join(tempDir, "repo/src/index.ts"),
+			"export const databaseUrl = Bun.env.DATABASE_URL;\n",
+		);
+		await writeFile(
+			join(tempDir, "repo/db/migrations/0001_accounts.sql"),
+			"create table public.accounts (id uuid primary key);\n",
+		);
+		await writeFile(
+			join(tempDir, "repo/infra/main.tf"),
+			'resource "aws_s3_bucket" "assets" {}\n',
+		);
+		const { indexed, outDir } = await indexFixtureRepo();
+		expect(indexed.ok).toBe(true);
+
+		const envBrief = await runCliJson(["cartographer", "brief", "--out", outDir, "--env", "DATABASE_URL", "--json"]);
+		const pathBrief = await runCliJson(["cartographer", "brief", "--out", outDir, "--path", "src/index.ts", "--json"]);
+		const dbBrief = await runCliJson(["cartographer", "brief", "--out", outDir, "--db", "public.accounts", "--json"]);
+		const iacBrief = await runCliJson([
+			"cartographer",
+			"brief",
+			"--out",
+			outDir,
+			"--iac",
+			"aws_s3_bucket:assets",
+			"--json",
+		]);
+		const changedBrief = await runCliJson([
+			"cartographer",
+			"brief",
+			"--root",
+			join(tempDir, "repo"),
+			"--live",
+			"--changed",
+			"--json",
+		]);
+
+		expect(recordField(envBrief, "anchor")["type"]).toBe("env");
+		expect(recordField(dbBrief, "anchor")["type"]).toBe("db");
+		expect(recordField(iacBrief, "anchor")["type"]).toBe("iac");
+		expect(recordField(changedBrief, "anchor")["type"]).toBe("changed");
+		expect(
+			arrayField(recordField(pathBrief, "surfaces"), "env").map((item) => stringField(recordValue(item), "label")),
+		).toContain("DATABASE_URL");
+		expect(arrayField(envBrief, "readFirst").map((item) => stringField(recordValue(item), "path"))).toContain("src/index.ts");
+		expect(arrayField(dbBrief, "readFirst").map((item) => stringField(recordValue(item), "path"))).toContain(
+			"db/migrations/0001_accounts.sql",
+		);
+		expect(arrayField(iacBrief, "readFirst").map((item) => stringField(recordValue(item), "path"))).toContain("infra/main.tf");
+		expect(recordField(changedBrief, "snapshot")["live"]).toBe(true);
+	});
+
+	test("exports full graph data only through explicit debug export", async () => {
+		const { indexed, outDir } = await indexFixtureRepo();
+		expect(indexed.ok).toBe(true);
+		const exportPath = join(outDir, "exports", "graph.debug.json");
+
+		const exported = await runCartographer({
+			command: "cartographer",
+			positionals: ["export", "graph"],
+			flags: { from: outDir, format: "debug-json", out: exportPath },
+		});
+		expect(exported.ok).toBe(true);
+
+		expect(await Bun.file(exportPath).exists()).toBe(true);
+		const debugGraph = JSON.parse(await readFile(exportPath, "utf8")) as Record<string, unknown>;
+		expect(debugGraph["schemaVersion"]).toBe("cartographer.graph.v2");
+		expect(Array.isArray(debugGraph["nodes"])).toBe(true);
+		expect(Array.isArray(debugGraph["edges"])).toBe(true);
+	});
+
+	test("creates and verifies removal audit ledgers with active leftovers", async () => {
+		await mkdir(join(tempDir, "repo/src/auth"), { recursive: true });
+		await mkdir(join(tempDir, "repo/supabase/migrations"), { recursive: true });
+		await mkdir(join(tempDir, "repo/.github/workflows"), { recursive: true });
+		await writeFile(
+			join(tempDir, "repo/package.json"),
+			JSON.stringify({
+				name: "fixture",
+				scripts: { test: "bun test", typecheck: "tsc --noEmit" },
+				dependencies: { "@supabase/supabase-js": "2.0.0" },
+			}),
+		);
+		await writeFile(
+			join(tempDir, "repo/src/auth/client.ts"),
+			[
+				"import { createClient } from '@supabase/supabase-js';",
+				"export const supabase = createClient(Bun.env.SUPABASE_URL!, Bun.env.SUPABASE_ANON_KEY!);",
+				"",
+			].join("\n"),
+		);
+		await writeFile(
+			join(tempDir, "repo/supabase/migrations/0001_policy.sql"),
+			"create policy user_policy on public.users using (auth.uid() = user_id);\n",
+		);
+		await writeFile(
+			join(tempDir, "repo/.github/workflows/ci.yml"),
+			"name: ci\njobs:\n  test:\n    steps:\n      - run: echo ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}\n",
+		);
+		const { indexed, outDir } = await indexFixtureRepo();
+		expect(indexed.ok).toBe(true);
+		const ledgerPath = join(outDir, "audits", "supabase-removal.json");
+
+		const ledger = await runCliJson([
+			"cartographer",
+			"audit",
+			"removal",
+			"--out",
+			outDir,
+			"--target",
+			"supabase",
+			"--write",
+			ledgerPath,
+			"--format",
+			"json",
+		]);
+		const classes = arrayField(ledger, "classes").map(recordValue);
+		const packageClass = classes.find((entry) => entry["class"] === "package-dependency");
+		const envClass = classes.find((entry) => entry["class"] === "env-var");
+		const policyClass = classes.find((entry) => entry["class"] === "rls-policy");
+
+		expect(ledger["schemaVersion"]).toBe("cartographer.audit-ledger.v1");
+		expect(recordField(ledger, "target")["raw"]).toBe("supabase");
+		expect(recordField(ledger, "verdict")["status"]).toBe("needs-review");
+		expect(packageClass?.["status"]).toBe("found");
+		expect(envClass?.["status"]).toBe("found");
+		expect(policyClass?.["status"]).toBe("found");
+		expect(await Bun.file(ledgerPath).exists()).toBe(true);
+
+		const verified = runCli([
+			"cartographer",
+			"audit",
+			"verify",
+			"--out",
+			outDir,
+			"--ledger",
+			ledgerPath,
+			"--fail-on-leftovers",
+			"--json",
+		]);
+		const verifyLedger = parseCliJson(verified.stdout);
+		expect(verified.exitCode).not.toBe(0);
+		expect(verified.stderr).toContain("audit verification failed");
+		expect(recordField(verifyLedger, "verdict")["status"]).toBe("failed");
+
+		const auditBrief = await runCliJson([
+			"cartographer",
+			"brief",
+			"--out",
+			outDir,
+			"--audit",
+			ledgerPath,
+			"--mode",
+			"prd",
+			"--json",
+		]);
+		const audit = recordField(auditBrief, "audit");
+		const readFirstPaths = arrayField(auditBrief, "readFirst").map((item) => stringField(recordValue(item), "path"));
+		expect(recordField(auditBrief, "anchor")["type"]).toBe("audit");
+		expect(audit["id"]).toBe("supabase-removal");
+		expect(audit["status"]).toBe("needs-review");
+		expect(readFirstPaths).toContain("package.json");
+		expect(readFirstPaths).toContain("src/auth/client.ts");
+	});
+
+	test("guards broad graph selectors unless explicitly allowed", async () => {
+		const { indexed, outDir } = await indexFixtureRepo();
+		expect(indexed.ok).toBe(true);
+
+		const rejected = runCli(["cartographer", "slice", "--out", outDir, "--selector", "all", "--json"]);
+		expect(rejected.exitCode).not.toBe(0);
+		expect(rejected.stderr).toContain("selector \"all\" is broad");
+
+		const allowed = await runCliJson([
+			"cartographer",
+			"slice",
+			"--out",
+			outDir,
+			"--selector",
+			"all",
+			"--allow-broad",
+			"--json",
+		]);
+		expect(numberField(recordField(allowed, "totals"), "nodes")).toBeGreaterThan(0);
+	});
+
+	test("ingests, audits, accepts, and stales evidence-backed notes", async () => {
+		const { indexed, outDir } = await indexFixtureRepo();
+		expect(indexed.ok).toBe(true);
+		const reportPath = join(tempDir, "subagent-report.json");
+		await writeFile(
+			reportPath,
+			JSON.stringify({
+				target: "fixture-entrypoint",
+				claims: [
+					{
+						kind: "test-guidance",
+						summary: "Use the colocated fixture test when changing the entrypoint.",
+						evidence: [{ path: "src/index.ts" }],
+					},
+				],
+			}),
+		);
+
+		const ingest = await runCliJson([
+			"cartographer",
+			"notes",
+			"ingest",
+			reportPath,
+			"--out",
+			outDir,
+			"--author",
+			"test-agent",
+			"--json",
+		]);
+		const note = recordAt(arrayField(ingest, "annotations"), 0);
+		const noteId = stringField(note, "id");
+		expect(ingest["notesPath"]).toBe(join(outDir, "notes.jsonl"));
+		expect(ingest["ingestedCount"]).toBe(1);
+		expect(note["status"]).toBe("candidate");
+
+		const accepted = await runCliJson([
+			"cartographer",
+			"notes",
+			"accept",
+			noteId,
+			"--out",
+			outDir,
+			"--reviewer",
+			"Saint",
+			"--json",
+		]);
+		expect(recordField(accepted, "annotation")["status"]).toBe("accepted");
+
+		const brief = await runCliJson([
+			"cartographer",
+			"brief",
+			"--out",
+			outDir,
+			"--path",
+			"src/index.ts",
+			"--json",
+		]);
+		const notes = recordField(brief, "notes");
+		expect(arrayField(notes, "accepted").map((item) => stringField(recordValue(item), "id"))).toContain(noteId);
+
+		await writeFile(join(tempDir, "repo/src/index.ts"), "export const value = 2;\n");
+		const staleAudit = await runCliJson([
+			"cartographer",
+			"notes",
+			"audit",
+			"--root",
+			join(tempDir, "repo"),
+			"--out",
+			outDir,
+			"--live",
+			"--json",
+		]);
+		expect(arrayField(staleAudit, "issues").map((item) => stringField(recordValue(item), "code"))).toContain(
+			"evidence-hash-mismatch",
+		);
+
+		const staleBrief = await runCliJson([
+			"cartographer",
+			"brief",
+			"--root",
+			join(tempDir, "repo"),
+			"--out",
+			outDir,
+			"--live",
+			"--path",
+			"src/index.ts",
+			"--json",
+		]);
+		const staleNotes = recordField(staleBrief, "notes");
+		expect(arrayField(staleNotes, "accepted")).toEqual([]);
+		expect(arrayField(staleNotes, "stale").map((item) => stringField(recordValue(item), "id"))).toContain(noteId);
 	});
 
 	test("summarizes graph-command adoption from a runtime trace", async () => {
@@ -710,6 +1039,7 @@ describe("runCartographer", () => {
 			"path:src/index.ts",
 			"--depth",
 			"0",
+			"--debug-graph",
 			"--json",
 		]);
 		const impact = recordField(context, "impact");
@@ -731,6 +1061,7 @@ describe("runCartographer", () => {
 			"symbol:src/index.ts:value",
 			"--depth",
 			"0",
+			"--debug-graph",
 			"--json",
 		]);
 		const slice = recordField(context, "slice");

@@ -1,12 +1,15 @@
 export { buildCodeGraph } from "./builder.ts";
 export { runCartographer } from "./commands.ts";
+export { buildRemovalAudit, readAuditLedger, renderAuditLedgerMarkdown, verifyRemovalAudit, writeAuditLedger } from "./audit.ts";
+export { buildBrief, renderBriefPrompt } from "./brief.ts";
 export { buildGraphContext, compactGraphContext, contextSelectorFor } from "./context.ts";
-export { checkCodeGraphArtifacts, readCodeGraph, renderMap, writeCodeGraphArtifacts } from "./artifacts.ts";
+export { checkCodeGraphArtifacts, readCodeGraph, renderMap, writeCodeGraphArtifacts, writeDebugJsonGraph, writeJsonlGraphExports } from "./artifacts.ts";
 export { diffCodeGraphs, renderCodeGraphDiff } from "./diff.ts";
 export { handleCartographerMcpRequest, runCartographerMcpServer } from "./mcp.ts";
 export { buildCartographerPreflightAdapterPayload, cartographerPreflightAdapterPayload } from "./preflight-adapter.ts";
 export { impactGraph, renderSlice, sliceGraph, summarizeGraph } from "./query.ts";
 export { runCartographerPreflight } from "./preflight.ts";
+export { auditNotes, ingestNotesReport, notesJsonlPath, readNotesOverlay, reviewNote, writeNotes } from "./notes.ts";
 export {
 	analyzeGraphCommandAdoption,
 	checkGraphFirstAdoption,
@@ -40,6 +43,39 @@ export {
 	readAnnotationOverlay,
 	renderAnnotationOverlayAudit,
 } from "./overlays.ts";
+export type {
+	AuditClassStatus,
+	AuditEvidence,
+	AuditEvidenceClass,
+	AuditLedger,
+	AuditLedgerKind,
+	AuditLedgerStatus,
+	AuditReplacementRequirement,
+	AuditRetention,
+	AuditTarget,
+	AuditValidationReceipt,
+	AuditVerdict,
+	RemovalEvidenceClass,
+} from "./audit.ts";
+export type {
+	BriefAnchor,
+	BriefBudget,
+	BriefFormat,
+	BriefMode,
+	BriefOmission,
+	BriefPacket,
+	BriefPathRecord,
+	BriefResolvedAnchor,
+	BuildBriefOptions,
+} from "./brief.ts";
+export type {
+	NoteReviewInput,
+	NoteReviewResult,
+	NotesIngestClaim,
+	NotesIngestOptions,
+	NotesIngestReport,
+	NotesIngestResult,
+} from "./notes.ts";
 export type {
 	CodeGraphArtifactCompatibility,
 	CodeGraphArtifactCompatibilityIssue,

@@ -1,18 +1,26 @@
 #!/usr/bin/env bun
 
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
 	analyzeGraphCommandAdoption,
+	auditNotes,
 	buildCodeGraph,
+	buildBrief,
+	buildRemovalAudit,
 	checkGraphFirstAdoption,
 	checkTraceExpectations,
 	codeGraphSnapshotSchema,
+	ingestNotesReport,
 	isSourceReadCommand,
+	reviewNote,
 	runCartographerPreflight,
+	verifyRemovalAudit,
 	writeCodeGraphArtifacts,
 	type CodeGraphSnapshot,
+	type RemovalEvidenceClass,
 	type TraceExpectationInput,
 } from "../src/index.ts";
 import type { RuntimeEvent } from "../src/core/types.ts";
@@ -110,6 +118,9 @@ async function main(): Promise<void> {
 
 	suites.push(await graphContractSuite("self", process.cwd(), join(runOutDir, "self"), options.maxFileBytes));
 	suites.push(await graphContractSuite("ark", options.targetRoot, join(runOutDir, "ark"), options.maxFileBytes));
+	suites.push(await briefPacketSuite(process.cwd(), options.maxFileBytes));
+	suites.push(await removalAuditSuite(runOutDir, options.maxFileBytes));
+	suites.push(await notesLifecycleSuite(runOutDir, options.maxFileBytes));
 	suites.push(await arkPreflightSuite(options, join(runOutDir, "ark")));
 	if (options.profile === "codex") {
 		suites.push(await codexTraceSuite(options));
@@ -167,7 +178,7 @@ async function liveCodexSuite(options: EvalOptions, runOutDir: string): Promise<
 		const graphFirst = checkGraphFirstAdoption(summary);
 		const expectations = checkTraceExpectations(liveRun.events, {
 			text: "CODEX_LIVE_CARTOGRAPHER_OK",
-			path: "src/code-graph/adoption.ts",
+			path: "src/kernel/turn-executor.ts",
 			command: "bun test src/code-graph/__tests__/adoption.test.ts",
 			executedCommand: "bun test src/code-graph/__tests__/adoption.test.ts",
 		});
@@ -237,10 +248,10 @@ async function runLiveCodex(
 	const prompt = [
 		"Do not edit files.",
 		"First run exactly this command:",
-		"bun run cartographer:preflight -- --root /Users/saint/dev/agent-runtime-kernel --live --path src/code-graph/adoption.ts --out /tmp/cartographer-live-codex-adoption",
+		"bun run cartographer:preflight -- --root /Users/saint/dev/agent-runtime-kernel --live --path src/kernel/turn-executor.ts --out /tmp/cartographer-live-codex-adoption",
 		"Then run exactly this validation command:",
 		"bun test src/code-graph/__tests__/adoption.test.ts",
-		"Then reply with exactly one compact line containing CODEX_LIVE_CARTOGRAPHER_OK, src/code-graph/adoption.ts, and bun test src/code-graph/__tests__/adoption.test.ts.",
+		"Then reply with exactly one compact line containing CODEX_LIVE_CARTOGRAPHER_OK, src/kernel/turn-executor.ts, and bun test src/code-graph/__tests__/adoption.test.ts.",
 	].join(" ");
 	const args = [
 		"exec",
@@ -614,9 +625,193 @@ async function graphContractSuite(
 	});
 }
 
+async function briefPacketSuite(root: string, maxFileBytes: number): Promise<EvalSuite> {
+	return timedSuite("brief-packet:self", "bounded brief packet", async () => {
+		const graph = await buildCodeGraph({ root, maxFileBytes });
+		const packet = buildBrief(graph, {
+			path: "src/code-graph/commands.ts",
+			requestedTokens: 8_000,
+			depth: 1,
+		});
+		const firstPath = packet.readFirst[0];
+		return [
+			check("schema-version", () =>
+				packet.schemaVersion === "cartographer.brief.v1" && packet.kind === "brief"
+					? passed("brief packet has expected schema")
+					: failed("schema-version", "brief packet schema was unexpected", {
+							schemaVersion: packet.schemaVersion,
+							kind: packet.kind,
+						}),
+			),
+			check("budget-compliance", () =>
+				packet.budget.estimatedTokens <= packet.budget.requestedTokens
+					? passed("brief stayed under requested token budget", {
+							estimatedTokens: packet.budget.estimatedTokens,
+							requestedTokens: packet.budget.requestedTokens,
+							omissions: packet.omissions.length,
+						})
+					: failed("budget-compliance", "brief exceeded requested token budget", { budget: packet.budget }),
+			),
+			check("anchor-first", () =>
+				firstPath?.path === "src/code-graph/commands.ts"
+					? passed("path brief ranks the selected path first", {
+							nodeId: firstPath.nodeId,
+							kind: firstPath.kind,
+						})
+					: failed("anchor-first", "path brief did not rank selected path first", { firstPath }),
+			),
+			check("bounded-sections", () =>
+				packet.readFirst.length <= 15 && packet.impact.length <= 25 && packet.validation.length <= 12
+					? passed("brief sections are bounded", {
+							readFirst: packet.readFirst.length,
+							impact: packet.impact.length,
+							validation: packet.validation.length,
+						})
+					: failed("bounded-sections", "brief sections exceeded default bounds", {
+							readFirst: packet.readFirst.length,
+							impact: packet.impact.length,
+							validation: packet.validation.length,
+						}),
+			),
+		];
+	});
+}
+
+async function removalAuditSuite(runOutDir: string, maxFileBytes: number): Promise<EvalSuite> {
+	return timedSuite("removal-audit:fixture", "removal audit fixture", async () => {
+		const root = await writeSupabaseRemovalFixture();
+		const graph = await buildCodeGraph({ root, maxFileBytes });
+		const ledger = await buildRemovalAudit(graph, { target: "supabase" });
+		const verified = await verifyRemovalAudit(graph, ledger, { failOnLeftovers: true });
+		const classes = new Map(ledger.classes.map((classEntry) => [classEntry.class, classEntry]));
+		return [
+			check("ledger-schema", () =>
+				ledger.schemaVersion === "cartographer.audit-ledger.v1" && ledger.kind === "removal"
+					? passed("removal ledger has expected schema")
+					: failed("ledger-schema", "removal ledger schema was unexpected", {
+							schemaVersion: ledger.schemaVersion,
+							kind: ledger.kind,
+						}),
+			),
+			check("evidence-class-recall", () =>
+				(["package-dependency", "import-or-sdk-client", "env-var", "rls-policy", "ci-secret-name"] as const).every(
+					(className: RemovalEvidenceClass) => (classes.get(className)?.active.length ?? 0) > 0,
+				)
+					? passed("fixture audit found seeded evidence classes")
+					: failed("evidence-class-recall", "fixture audit missed seeded evidence classes", {
+							classes: [...classes.values()].map((entry) => ({
+								class: entry.class,
+								active: entry.active.length,
+								status: entry.status,
+							})),
+						}),
+			),
+			check("fail-on-leftovers", () =>
+				verified.verdict.status === "failed" && verified.verdict.blockers.length > 0
+					? passed("audit verify fails closed when leftovers remain", {
+							blockers: verified.verdict.blockers,
+						})
+					: failed("fail-on-leftovers", "audit verify did not fail closed for leftovers", {
+							verdict: verified.verdict,
+						}),
+			),
+		];
+	});
+}
+
+async function notesLifecycleSuite(runOutDir: string, maxFileBytes: number): Promise<EvalSuite> {
+	return timedSuite("notes-lifecycle:fixture", "notes lifecycle fixture", async () => {
+		const root = await writeNotesFixture();
+		const graph = await buildCodeGraph({ root, maxFileBytes });
+		const outDir = join(runOutDir, "notes-artifacts");
+		await writeCodeGraphArtifacts(graph, { outDir });
+		const reportPath = join(runOutDir, "notes-report.json");
+		await writeFile(
+			reportPath,
+			JSON.stringify({
+				target: "notes-fixture",
+				claims: [
+					{
+						kind: "test-guidance",
+						summary: "Use the colocated test when changing the fixture entrypoint.",
+						evidence: [{ path: "src/index.ts" }],
+					},
+				],
+			}),
+		);
+		const ingest = await ingestNotesReport(graph, { outDir, reportPath, authorName: "eval" });
+		const noteId = ingest.annotations[0]?.id;
+		const accepted = noteId === undefined ? undefined : await reviewNote(graph, outDir, { action: "accept", noteId, reviewer: "eval" });
+		await writeFile(join(root, "src/index.ts"), "export const value = 2;\n");
+		const staleAudit = await auditNotes(await buildCodeGraph({ root, maxFileBytes }), outDir);
+		return [
+			check("ingest-candidate", () =>
+				ingest.ingestedCount === 1 && ingest.annotations[0]?.status === "candidate"
+					? passed("notes ingest creates candidate notes", { noteId })
+					: failed("ingest-candidate", "notes ingest did not create one candidate note", {
+							ingestedCount: ingest.ingestedCount,
+							annotations: ingest.annotations,
+						}),
+			),
+			check("accept-grounded", () =>
+				accepted?.annotation.status === "accepted" && accepted.audit.summary.usableAcceptedCount === 1
+					? passed("audit-clean candidate can be accepted", { noteId })
+					: failed("accept-grounded", "accepted note was not usable", { accepted }),
+			),
+			check("stale-after-drift", () =>
+				staleAudit.issues.some(
+					(issue) => issue.annotationId === noteId && issue.code === "evidence-hash-mismatch",
+				)
+					? passed("accepted note becomes stale after evidence hash drift", { noteId })
+					: failed("stale-after-drift", "note audit did not detect evidence hash drift", {
+							noteId,
+							issues: staleAudit.issues,
+						}),
+			),
+		];
+	});
+}
+
+async function writeSupabaseRemovalFixture(): Promise<string> {
+	const root = await mkdtemp(join(tmpdir(), "cartographer-removal-eval-"));
+	await mkdir(join(root, "src/auth"), { recursive: true });
+	await mkdir(join(root, "supabase/migrations"), { recursive: true });
+	await mkdir(join(root, ".github/workflows"), { recursive: true });
+	await writeFile(
+		join(root, "package.json"),
+		JSON.stringify({
+			name: "removal-fixture",
+			scripts: { test: "bun test", typecheck: "tsc --noEmit" },
+			dependencies: { "@supabase/supabase-js": "2.0.0" },
+		}),
+	);
+	await writeFile(
+		join(root, "src/auth/client.ts"),
+		"import { createClient } from '@supabase/supabase-js';\nexport const supabase = createClient(Bun.env.SUPABASE_URL!, Bun.env.SUPABASE_ANON_KEY!);\n",
+	);
+	await writeFile(
+		join(root, "supabase/migrations/0001_policy.sql"),
+		"create policy user_policy on public.users using (auth.uid() = user_id);\n",
+	);
+	await writeFile(
+		join(root, ".github/workflows/ci.yml"),
+		"name: ci\njobs:\n  test:\n    steps:\n      - run: echo ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}\n",
+	);
+	return root;
+}
+
+async function writeNotesFixture(): Promise<string> {
+	const root = await mkdtemp(join(tmpdir(), "cartographer-notes-eval-"));
+	await mkdir(join(root, "src"), { recursive: true });
+	await writeFile(join(root, "package.json"), JSON.stringify({ name: "notes-fixture", scripts: { test: "bun test" } }));
+	await writeFile(join(root, "src/index.ts"), "export const value = 1;\n");
+	await writeFile(join(root, "src/index.test.ts"), "import { value } from './index';\ntest('value', () => value);\n");
+	return root;
+}
+
 async function arkPreflightSuite(options: EvalOptions, outDir: string): Promise<EvalSuite> {
 	return timedSuite("ark-preflight", "ARK read-only preflight navigation", async () => {
-		const targetPath = "src/code-graph/commands.ts";
+		const targetPath = "src/kernel/turn-executor.ts";
 		const result = await runCartographerPreflight({
 			root: options.targetRoot,
 			outDir,
@@ -636,18 +831,14 @@ async function arkPreflightSuite(options: EvalOptions, outDir: string): Promise<
 			check("focused-tests-present", () =>
 				expectAllIncluded(
 					context.summary.testPaths,
-					["src/code-graph/__tests__/builder.test.ts", "src/code-graph/__tests__/commands.test.ts"],
+					["src/kernel/__tests__/turn-executor.test.ts"],
 					"focused test paths are present",
 				),
 			),
 			check("focused-commands-first", () =>
 				expectAllIncluded(
 					validationCommands.slice(0, 3).filter((item): item is string => item !== undefined),
-					[
-						"bun test ./src/code-graph/__tests__/builder.test.ts",
-						"bun test ./src/code-graph/__tests__/commands.test.ts",
-						"bun test ./src/code-graph",
-					],
+					["bun test ./src/kernel/__tests__/turn-executor.test.ts"],
 					"focused validation commands lead compact context",
 				),
 			),
@@ -785,6 +976,9 @@ function ignoredPath(path: string): boolean {
 		path === ".git" ||
 		path.startsWith(".git/") ||
 		path.includes("/.git/") ||
+		path === ".cartographer" ||
+		path.startsWith(".cartographer/") ||
+		path.includes("/.cartographer/") ||
 		path === "docs/codegraph" ||
 		path.startsWith("docs/codegraph/")
 	);

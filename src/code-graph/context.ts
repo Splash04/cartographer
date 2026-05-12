@@ -117,9 +117,12 @@ function compactGraphContextSummary(summary: GraphContextSummary): GraphContextS
 }
 
 function compactValidationCommands(summary: GraphContextSummary): readonly ValidationCommandSummary[] {
-	const relevantFocused = summary.validationCommands.filter((command) =>
-		validationCommandMatchesContext(command, summary),
-	);
+	const relevantFocused = summary.validationCommands
+		.filter((command) => validationCommandMatchesContext(command, summary))
+		.toSorted(
+			(left, right) =>
+				validationCommandContextPriority(left, summary) - validationCommandContextPriority(right, summary),
+		);
 	const packageCommands = summary.validationCommands.filter(
 		(command) => !command.scriptId.includes("#") && isCompactPackageCommand(command),
 	);
@@ -141,6 +144,28 @@ function validationCommandMatchesContext(command: ValidationCommandSummary, summ
 		summary.primaryPaths.some((path) => path === scope || path.startsWith(`${scope}/`)) ||
 		summary.impactPaths.some((path) => path === scope || path.startsWith(`${scope}/`))
 	);
+}
+
+function validationCommandContextPriority(command: ValidationCommandSummary, summary: GraphContextSummary): number {
+	const scope = testCommandScope(command);
+	if (scope === undefined) return 10;
+	if (isDirectTestForPaths(scope, summary.primaryPaths)) return 0;
+	if (isDirectTestForPaths(scope, summary.impactPaths)) return 1;
+	return 2;
+}
+
+function isDirectTestForPaths(testPath: string, paths: readonly string[]): boolean {
+	const testStem = sourceStemForTestPath(testPath);
+	return paths.some((path) => sourceStem(path) === testStem);
+}
+
+function sourceStemForTestPath(path: string): string {
+	const withoutTestDir = path.replace(/(^|\/)__tests__\//, "$1");
+	return sourceStem(withoutTestDir.replace(/\.(test|spec)(\.[cm]?[tj]sx?)$/, "$2"));
+}
+
+function sourceStem(path: string): string {
+	return path.replace(/\.[cm]?[tj]sx?$/, "");
 }
 
 function testCommandScope(command: ValidationCommandSummary): string | undefined {
@@ -269,15 +294,11 @@ const contextSelectorPrefixes = [
 
 const contextPathNodeKinds = new Set<CodeGraphNode["kind"]>([
 	"File",
-	"Test",
 	"Doc",
 	"Config",
 	"GeneratedArtifact",
-	"BoundaryPolicy",
-	"Entrypoint",
 	"IaCModule",
 	"IaCResource",
-	"Route",
 	"Migration",
 	"DirtyArtifact",
 ]);

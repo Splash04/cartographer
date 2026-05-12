@@ -50,11 +50,11 @@ export interface AnnotationOverlayIssue {
 }
 
 export async function readAnnotationOverlay(outDir: string): Promise<AnnotationOverlayLoadResult> {
+	const notesPath = join(outDir, "notes.jsonl");
+	if (await Bun.file(notesPath).exists()) return parseAnnotationOverlay(await readFile(notesPath, "utf8"), notesPath);
 	const overlayPath = join(outDir, "overlays", "agent-notes.jsonl");
-	if (!(await Bun.file(overlayPath).exists())) {
-		return { overlayPath, annotations: [], parseIssues: [] };
-	}
-	return parseAnnotationOverlay(await readFile(overlayPath, "utf8"), overlayPath);
+	if (await Bun.file(overlayPath).exists()) return parseAnnotationOverlay(await readFile(overlayPath, "utf8"), overlayPath);
+	return { overlayPath: notesPath, annotations: [], parseIssues: [] };
 }
 
 export function parseAnnotationOverlay(raw: string, overlayPath: string): AnnotationOverlayLoadResult {

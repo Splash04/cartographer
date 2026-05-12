@@ -9,16 +9,10 @@ const nodeKindSchema = z.enum([
 	"File",
 	"Directory",
 	"Symbol",
-	"Entrypoint",
-	"Route",
-	"Test",
 	"Doc",
 	"GeneratedArtifact",
 	"Config",
 	"EnvVar",
-	"BoundaryPolicy",
-	"Finding",
-	"AgentAnnotation",
 	"ExternalDependency",
 	"Migration",
 	"DbTable",
@@ -36,9 +30,6 @@ const edgeKindSchema = z.enum([
 	"IMPORTS",
 	"TYPE_IMPORTS",
 	"EXPORTS",
-	"REFERENCES",
-	"CALLS",
-	"ROUTES_TO",
 	"TESTS",
 	"DOCUMENTS",
 	"GENERATED_BY",
@@ -48,16 +39,10 @@ const edgeKindSchema = z.enum([
 	"SERVICE_CALLS_RPC",
 	"TABLE_REFERENCES_TABLE",
 	"DEPENDS_ON",
-	"TASK_DEPENDS_ON",
 	"AFFECTS",
-	"OWNED_BY",
-	"GUARDED_BY",
-	"STALE_BECAUSE",
-	"ANNOTATES",
 	"MIGRATION_CREATES",
 	"MIGRATION_ALTERS",
 	"MIGRATION_DROPS",
-	"MIGRATION_SUPERSEDES",
 	"RESOURCE_DEPENDS_ON",
 ]);
 
@@ -191,5 +176,76 @@ export function codeGraphJsonSchema(): Record<string, unknown> {
 			annotations: { type: "array" },
 		},
 		additionalProperties: false,
+	};
+}
+
+export function briefJsonSchema(): Record<string, unknown> {
+	return {
+		$schema: "https://json-schema.org/draft/2020-12/schema",
+		title: "Cartographer Brief Packet",
+		type: "object",
+		required: ["schemaVersion", "kind", "mode", "snapshot", "anchor", "budget", "readFirst", "impact", "omissions"],
+		properties: {
+			schemaVersion: { const: "cartographer.brief.v1" },
+			kind: { const: "brief" },
+			mode: { enum: ["planning", "implementation", "review", "prd"] },
+			snapshot: { type: "object" },
+			anchor: { type: "object" },
+			budget: { type: "object" },
+			readFirst: { type: "array" },
+			impact: { type: "array" },
+			omissions: { type: "array" },
+		},
+		additionalProperties: true,
+	};
+}
+
+export function auditLedgerJsonSchema(): Record<string, unknown> {
+	return {
+		$schema: "https://json-schema.org/draft/2020-12/schema",
+		title: "Cartographer Audit Ledger",
+		type: "object",
+		required: ["schemaVersion", "id", "kind", "target", "snapshot", "classes", "validation"],
+		properties: {
+			schemaVersion: { const: "cartographer.audit-ledger.v1" },
+			id: { type: "string" },
+			kind: { enum: ["removal"] },
+			target: { type: "object" },
+			snapshot: { type: "object" },
+			classes: { type: "array" },
+			validation: { type: "array" },
+		},
+		additionalProperties: true,
+	};
+}
+
+export function notesJsonSchema(): Record<string, unknown> {
+	return {
+		$schema: "https://json-schema.org/draft/2020-12/schema",
+		title: "Cartographer Notes",
+		type: "object",
+		required: ["id", "targetNodeId", "kind", "summary", "evidence", "author", "confidence", "status"],
+		properties: {
+			id: { type: "string" },
+			targetNodeId: { type: "string" },
+			kind: {
+				enum: [
+					"purpose",
+					"invariant",
+					"edit-warning",
+					"workflow",
+					"test-guidance",
+					"generated-ownership",
+					"iac-link",
+					"risk",
+				],
+			},
+			summary: { type: "string" },
+			evidence: { type: "array" },
+			author: { type: "object" },
+			confidence: { enum: ["agent-inferred", "human-reviewed"] },
+			status: { enum: ["candidate", "accepted", "stale", "retired"] },
+		},
+		additionalProperties: true,
 	};
 }

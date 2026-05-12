@@ -5,7 +5,7 @@
 
 A standalone Cartographer CLI plus Claude Code plugin for mapping and navigating codebases.
 
-Cartographer v2 adds a graph-first CLI for agents: index a repo, query task slices, inspect impact, include package, SQL, Terraform, and GitHub Actions evidence, generate preflight context, audit semantic annotations, and score whether agents used graph context before editing.
+Cartographer v2 adds a graph CLI for intelligent coding agents: index a repo into a local SQLite graph, compile bounded briefs, run removal/completeness audits, manage evidence-backed notes, and score whether agents used graph context before editing.
 
 ## CLI
 
@@ -20,11 +20,13 @@ Run the CLI:
 ```bash
 bun run cartographer -- --help
 bun run cartographer:mcp
-bun run cartographer:index -- --root . --out docs/codegraph
-bun run cartographer:verify -- --out docs/codegraph --root . --fresh
-bun run cartographer:view -- --out docs/codegraph
-bun run cartographer:diff -- --base /tmp/old-codegraph --head docs/codegraph
-bun run cartographer:preflight -- --root . --path src/index.ts --out docs/codegraph
+bun run cartographer:index -- --root . --out .cartographer
+bun run cartographer:verify -- --out .cartographer --root . --fresh
+bun run cartographer:view -- --out .cartographer
+bun run cartographer:brief -- --out .cartographer --path src/index.ts --mode implementation --json
+bun run cartographer:audit -- removal --out .cartographer --target supabase --write .cartographer/audits/supabase-removal.json
+bun run cartographer:notes -- audit --out .cartographer --json
+bun run cartographer:export -- graph --from .cartographer --format debug-json --out .cartographer/exports/graph.debug.json
 ```
 
 Run the deterministic Cartographer eval smoke profile:
@@ -40,20 +42,23 @@ The smoke, recorded Codex-trace, and explicit live Codex profiles index this rep
 Core commands:
 
 - `mcp` - run a thin newline-delimited MCP stdio wrapper over Cartographer graph operations.
-- `index` - build `schema.json`, `manifest.json`, `graph.json`, and `CODEBASE_MAP.md`.
+- `index` - build `.cartographer/manifest.json`, `.cartographer/graph.sqlite`, JSON schemas, and `CODEBASE_MAP.md`.
 - `verify` - check graph artifact compatibility and, with `--fresh`, fail when persisted artifacts drift from the live repo.
 - `view` - summarize an existing graph.
+- `brief` - emit bounded agent-facing context around a path, package, env var, DB/IaC object, audit ledger, or changed files.
+- `audit removal` / `audit verify` - create and verify task-specific removal ledgers.
+- `notes ingest` / `notes audit` / `notes accept` / `notes retire` - manage evidence-backed semantic notes.
+- `export graph` - explicitly export full debug JSON or JSONL graph data.
 - `diff` - compare two graph artifact directories.
-- `slice` - show a bounded graph slice for a selector.
-- `impact` - show downstream impact for a path or node id.
-- `context` - combine slice and impact context for planning.
-- `preflight` - emit compact graph context before an agent edit.
+- `slice`, `impact`, `context`, `preflight` - compatibility/debug graph surfaces. Broad selectors require `--allow-broad` or `--debug-graph`.
 - `adoption` - score graph-first behavior from runtime traces.
-- `annotate` / `annotations` - generate and audit semantic overlay notes.
+- `annotate` / `annotations` - legacy OpenRouter annotation workflow, superseded for daily use by `notes`.
 
-The MCP wrapper exposes `cartographer_index`, `cartographer_view`, `cartographer_context`, `cartographer_preflight`, `cartographer_verify`, and `cartographer_diff` as tools. It wraps the same library functions as the CLI; it does not become a long-lived graph brain or agent manager.
+The MCP wrapper exposes `cartographer_index`, `cartographer_view`, `cartographer_brief`, `cartographer_context`, `cartographer_preflight`, `cartographer_verify`, `cartographer_audit_removal`, `cartographer_audit_verify`, `cartographer_notes_audit`, and `cartographer_diff` as tools. It wraps the same library functions as the CLI; it does not become a long-lived graph brain or agent manager.
 
 ## Installation
+
+The section below documents the legacy Claude Code plugin workflow that produces `docs/CODEBASE_MAP.md` by orchestrating subagents. It is separate from the Cartographer v2 graph CLI above. For new agent/orchestrator workflows, prefer the v2 `brief`, `audit`, and `notes` commands.
 
 **Step 1:** Add the marketplace to Claude Code:
 

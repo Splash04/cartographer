@@ -397,7 +397,7 @@ function addWorkflowEdges(
 	}
 	addProvenanceEdge(
 		graph,
-		"TASK_DEPENDS_ON",
+		"CONFIGURES",
 		workflowJobNodeId(file, fact.jobId ?? "unknown"),
 		nodeId,
 		fact.taskKind,

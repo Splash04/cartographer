@@ -372,7 +372,7 @@ describe("buildCodeGraph", () => {
 		expect(
 			graph.edges.some(
 				(edge) =>
-					edge.kind === "TASK_DEPENDS_ON" &&
+					edge.kind === "CONFIGURES" &&
 					edge.from === "config:ci:.github/workflows/ci.yml:job:verify" &&
 					edge.to === "config:ci:.github/workflows/ci.yml:job:verify:run:1",
 			),

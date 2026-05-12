@@ -560,7 +560,7 @@ function isTestPath(path: string): boolean {
 	return path.includes("__tests__/") || /\.(test|spec)\.[cm]?[tj]sx?$/.test(path);
 }
 
-const moduleTestSourceNodeKinds = new Set<CodeGraphNode["kind"]>(["Entrypoint", "File", "GeneratedArtifact", "Route"]);
+const moduleTestSourceNodeKinds = new Set<CodeGraphNode["kind"]>(["File", "GeneratedArtifact"]);
 
 function moduleTestScopePath(path: string): string | undefined {
 	const segments = path.split("/");
@@ -889,8 +889,6 @@ const impactEdgeKinds = new Set<CodeGraphEdge["kind"]>([
 	"IMPORTS",
 	"TYPE_IMPORTS",
 	"DOCUMENTS",
-	"REFERENCES",
-	"CALLS",
 	"GENERATED_BY",
 	"USES_ENV",
 	"CONFIGURES",

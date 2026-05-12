@@ -13,7 +13,7 @@ The suite should answer four production questions:
 - Can the graph extract a faithful, bounded map of a repo at practical speed?
 - Do task slices surface the files, infra resources, env vars, tests, and risks an agent needs?
 - Do Codex-style agent workflows actually use the graph before editing?
-- Do agent-authored annotations add grounded workflow meaning without pretending to be parser or compiler facts?
+- Do agent-authored notes add grounded workflow meaning without pretending to be parser or compiler facts?
 - Does the graph stay durable as repos grow, change, and include monorepos plus IaC?
 
 ## What Better Means
@@ -43,9 +43,9 @@ Current standalone Cartographer read-only ARK target evidence, measured on 2026-
 | `cartographer:index --root /Users/saint/dev/agent-runtime-kernel --out /tmp/cartographer-ark-codegraph` | 0.41s wall time, 227,573,760 bytes max RSS |
 | ARK graph size | 669 files, 4,620 nodes, 10,049 edges, 0 findings |
 | ARK edge baselines | 835 `TESTS`, 2,000 `IMPORTS`, 1,177 `TYPE_IMPORTS`, 1,351 `EXPORTS`, 111 `USES_ENV`, 37 `TABLE_REFERENCES_TABLE` |
-| `cartographer preflight --root /Users/saint/dev/agent-runtime-kernel --live --path src/code-graph/commands.ts --out /tmp/cartographer-ark-codegraph --json` | 340ms total; 327ms graph load, 12ms context build, 1ms prompt render |
-| Preflight navigation evidence | 17 primary paths, 2 focused test paths, 0 findings |
-| Compact validation commands | 11 commands after filtering, with `limits.validationCommands: 20` and `omissions.validationCommands: 103`; direct focused tests and module test first, safe broad commands retained, watch/live variants omitted |
+| `cartographer preflight --root /Users/saint/dev/agent-runtime-kernel --live --path src/kernel/turn-executor.ts --out /tmp/cartographer-ark-codegraph` | Current smoke target for read-only ARK navigation |
+| Preflight navigation evidence | Target path appears in primary paths; `src/kernel/__tests__/turn-executor.test.ts` appears in test paths |
+| Compact validation commands | Direct focused `bun test ./src/kernel/__tests__/turn-executor.test.ts` is prioritized in the compact validation list; safe broad commands remain available after focused commands |
 
 Axia OS read-only stress run, measured on 2026-05-11:
 
@@ -135,12 +135,12 @@ Tier: deterministic.
 
 Checks:
 
-- `schema-valid`: `graph.json` validates with `codeGraphSnapshotSchema`.
+- `schema-valid`: the in-memory graph snapshot validates with `codeGraphSnapshotSchema`, and indexed artifacts write `graph.sqlite` by default.
 - `stable-node-ids`: every node id is stable, unique, and non-empty.
 - `edge-endpoints-exist`: every edge endpoint references a real node.
 - `evidence-paths-exist`: every evidence path exists in the indexed repo or is explicitly marked generated/deleted.
 - `no-secret-values`: env-var nodes can include names, never raw secret values.
-- `no-default-ignored-paths`: ignored paths such as `node_modules`, `dist`, `.git`, and `docs/codegraph` do not enter the graph.
+- `no-default-ignored-paths`: ignored paths such as `node_modules`, `dist`, `.git`, `.cartographer`, and legacy `docs/codegraph` do not enter the graph.
 - `provenance-confidence-valid`: source and confidence combinations are legal. Parser-lite or Tree-sitter facts cannot claim `compiler-backed`; agent annotations cannot claim `deterministic`.
 - `precision-provider-receipt`: reports include compiler-backed provider availability and fallback reasons when TypeScript, SCIP, or LSP inputs are absent, stale, or skipped.
 
@@ -314,7 +314,7 @@ Metrics from traces:
 - affected-package accuracy
 - evidence-to-action conversion: whether the agent uses retrieved graph/source evidence to choose the correct next edit, explanation, or validation step
 - belief durability: whether retained package, module, dependency, and risk hypotheses stay coherent across follow-up probes
-- writeback quality for any suggested semantic overlay note, including source-anchor freshness and stale-anchor handling
+- writeback quality for any suggested evidence-backed note, including source-anchor freshness and stale-anchor handling
 
 The deterministic trace summary should use `analyzeGraphCommandAdoption(events)`, `checkGraphFirstAdoption(summary)`, and `checkTraceExpectations(events, expectations)` from `src/code-graph/adoption.ts`. Before the runner exists, manual trace research can run `cartographer adoption --trace <runtime-events.json> --json` against the same raw event shape, add `--require-graph-first` for a strict manual gate, or add repeatable `--expect-text`, `--expect-path`, `--expect-command`, and `--expect-executed-command` flags for evidence checks. The summary includes command order, trace duration, first graph command offset, successful graph-preflight result count, preflight durations, first preflight result offset, first preflight phase timings, first source-read-before-graph offset, shell-wrapped source-read handling, skill-instruction read exclusions, and structured graph preflight failures when timestamps are present. Graph-command adoption recognizes both `cartographer preflight` and `cartographer context --json`, including full context follow-up commands emitted when prompt JSON is truncated. The strict gate also emits `graphFirstAdoption` in JSON when `--require-graph-first` is present, so manual traces carry the same pass/fail shape the future runner should persist. `finalResponseExpectation.metrics` carries aggregate expected/hit counts for text, path, recommended command, and executed-command checks so reports do not need to recompute deterministic scoring from raw evidence. Expected-path checks emit per-path evidence for final-response mention, any tool-command mention, and direct source-read mention. Expected-command checks emit per-command evidence for final-response mention and tool-command presence; executed-command checks require a matching tool command and fail when the agent only recommends validation in the final answer. This lets reports separate "agent never tried graph context" from "harness tried preflight and the graph was unavailable," separate "agent named a file" from "agent actually navigated to it," and separate "agent recommended validation" from "agent actually ran validation." The strict graph-first gate fails on missing graph use, graph preflight failures, or repo source reads before graph context. The final-response gate fails when the trace answer omits any expected marker, file, or validation command, and the executed-command gate fails when the trace never ran a required validation command. The suite still needs to store raw `RuntimeEvent[]` evidence because these classifiers only summarize the trajectory.
 
@@ -327,13 +327,13 @@ Pass conditions:
 - Graph adoption alone is not a pass. A run that uses the graph, reads useful files, and then edits the wrong module or skips required validation fails the understanding check.
 - Claims about speed must separate provider/model latency from local graph command latency.
 
-### 5. Semantic Overlay Quality
+### 5. Notes Quality
 
-Purpose: score whether agent annotations are useful, grounded, and separable from deterministic facts.
+Purpose: score whether agent-authored notes are useful, grounded, and separable from deterministic facts.
 
 Tier: judge only after human calibration.
 
-This suite is skipped until calibration exists. Semantic overlay quality must not be used to claim graph correctness, and an annotation cannot turn an unsupported parser guess into an accepted fact.
+This suite is skipped until calibration exists. Notes quality must not be used to claim graph correctness, and a note cannot turn an unsupported parser guess into an accepted fact.
 
 Binary rubric:
 
@@ -349,16 +349,16 @@ Binary rubric:
 - stays concise enough to be useful inside a future task slice
 - avoids fabricated owners, files, tests, resources, or workflows
 - flags important risks when present in gold data
-- records reviewer decision metadata before an annotation is trusted as accepted
-- rejects annotations that contradict deterministic graph facts or stale evidence receipts
+- records reviewer decision metadata before a note is trusted as accepted
+- rejects notes that contradict deterministic graph facts or stale evidence receipts
 - includes trace evidence that the annotator used graph preflight plus direct source reads before writeback
 
 Judge requirements:
 
-- Judge must use a different model family from the annotator.
+- Judge must use a different model family from the note author.
 - Judge output must be structured JSON and schema-validated.
-- Judge must see the graph slice, the candidate annotations, and the gold task record.
-- Judge must score review metadata separately from annotation text, so an accurate note without a review receipt cannot pass accepted-overlay quality.
+- Judge must see the graph slice, the candidate notes, and the gold task record.
+- Judge must score review metadata separately from note text, so an accurate note without a review receipt cannot pass accepted-note quality.
 - No semantic score is trusted until human agreement is above 90% and Cohen's kappa is above 0.8.
 
 ## Profiles

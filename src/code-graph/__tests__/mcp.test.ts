@@ -22,9 +22,36 @@ describe("Cartographer MCP wrapper", () => {
 		const names = tools.map((tool) => stringField(recordValue(tool), "name"));
 
 		expect(names).toContain("cartographer_index");
+		expect(names).toContain("cartographer_brief");
 		expect(names).toContain("cartographer_preflight");
+		expect(names).toContain("cartographer_audit_removal");
+		expect(names).toContain("cartographer_notes_audit");
 		expect(names).toContain("cartographer_verify");
 		expect(names).toContain("cartographer_diff");
+	});
+
+	test("runs bounded brief through MCP tools/call", async () => {
+		const outDir = await indexFixtureRepo();
+		const response = await handleCartographerMcpRequest({
+			jsonrpc: "2.0",
+			id: "brief",
+			method: "tools/call",
+			params: {
+				name: "cartographer_brief",
+				arguments: {
+					outDir,
+					path: "src/index.ts",
+					mode: "planning",
+					budget: 8000,
+				},
+			},
+		});
+		const toolOutput = toolText(successResult(response));
+		const parsed = JSON.parse(toolOutput) as Record<string, unknown>;
+		const anchor = recordField(parsed, "anchor");
+
+		expect(parsed["schemaVersion"]).toBe("cartographer.brief.v1");
+		expect(anchor["selector"]).toBe("path:src/index.ts");
 	});
 
 	test("runs preflight through MCP tools/call", async () => {
