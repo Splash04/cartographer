@@ -144,6 +144,8 @@ describe("runCartographer", () => {
 	});
 
 	test("renders slice and impact JSON for harness consumers", async () => {
+		await writeFile(join(tempDir, "repo/src/consumer.ts"), "import { value } from './index';\nexport const consumer = value;\n");
+		await writeFile(join(tempDir, "repo/src/far.ts"), "import { consumer } from './consumer';\nexport const far = consumer;\n");
 		const { indexed, outDir } = await indexFixtureRepo();
 		expect(indexed.ok).toBe(true);
 
@@ -166,6 +168,28 @@ describe("runCartographer", () => {
 			"src/index.ts",
 			"--depth",
 			"0",
+			"--debug-graph",
+			"--json",
+		]);
+		const defaultImpact = await runCliJson([
+			"cartographer",
+			"impact",
+			"--out",
+			outDir,
+			"--path",
+			"src/index.ts",
+			"--debug-graph",
+			"--json",
+		]);
+		const deepImpact = await runCliJson([
+			"cartographer",
+			"impact",
+			"--out",
+			outDir,
+			"--path",
+			"src/index.ts",
+			"--depth",
+			"2",
 			"--debug-graph",
 			"--json",
 		]);
@@ -200,6 +224,9 @@ describe("runCartographer", () => {
 			runCommand: "bun run test",
 			path: "package.json",
 		});
+		expect(nodeIds(defaultImpact)).toContain("file:src/consumer.ts");
+		expect(nodeIds(defaultImpact)).not.toContain("file:src/far.ts");
+		expect(nodeIds(deepImpact)).toContain("file:src/far.ts");
 
 		const compact = await runCliJson([
 			"cartographer",

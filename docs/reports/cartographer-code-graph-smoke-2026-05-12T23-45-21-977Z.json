@@ -1,0 +1,540 @@
+{
+  "runId": "cartographer-code-graph-smoke-2026-05-12T23-45-21-977Z",
+  "profile": "smoke",
+  "status": "passed",
+  "startedAt": "2026-05-12T23:45:21.977Z",
+  "finishedAt": "2026-05-12T23:45:23.407Z",
+  "durationMs": 1430,
+  "options": {
+    "profile": "smoke",
+    "targetRoot": "/Users/saint/dev/agent-runtime-kernel",
+    "reportDir": "/Users/saint/Dev/cartographer-plugin/docs/reports",
+    "outBase": "/tmp/cartographer-code-graph-evals",
+    "maxFileBytes": 500000,
+    "traceSuite": "/Users/saint/Dev/cartographer-plugin/.evals/fixtures/codex-traces/cases.json",
+    "live": false,
+    "codexPath": "codex"
+  },
+  "environment": {
+    "cwd": "/Users/saint/Dev/cartographer-plugin",
+    "platform": "darwin",
+    "arch": "arm64",
+    "bunVersion": "1.3.8",
+    "git": {
+      "commit": "4168f492662e38d11287d95bd32ab3a725f689de",
+      "dirty": true
+    }
+  },
+  "researchGrounding": [
+    "docs/evals/cartographer-code-graph-eval-suites.md",
+    "docs/evals/cartographer-code-graph-completion-audit.md",
+    "docs/evals/cartographer-code-graph-plan-integrity-audit.md",
+    ".evals/research/cartographer-code-graph-trace-survey.md",
+    ".evals/research/cartographer-axia-stress-run.md",
+    ".evals/fixtures/codex-traces/cases.json",
+    "codex exec --json --ephemeral"
+  ],
+  "suites": [
+    {
+      "id": "graph-contract:self",
+      "title": "self graph contract",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:21.978Z",
+      "finishedAt": "2026-05-12T23:45:22.137Z",
+      "durationMs": 159,
+      "checks": [
+        {
+          "id": "schema-valid",
+          "status": "passed",
+          "summary": "graph snapshot validates",
+          "metrics": {
+            "durationMs": 111,
+            "files": 122,
+            "nodes": 201,
+            "edges": 488,
+            "findings": 0,
+            "gitDirty": true
+          }
+        },
+        {
+          "id": "unique-node-ids",
+          "status": "passed",
+          "summary": "no duplicate node ids",
+          "metrics": {
+            "count": 201
+          }
+        },
+        {
+          "id": "unique-edge-ids",
+          "status": "passed",
+          "summary": "no duplicate edge ids",
+          "metrics": {
+            "count": 488
+          }
+        },
+        {
+          "id": "edge-endpoints-exist",
+          "status": "passed",
+          "summary": "all edge endpoints exist",
+          "metrics": {
+            "edgeCount": 488
+          }
+        },
+        {
+          "id": "symbols-are-typed-facts",
+          "status": "passed",
+          "summary": "symbols are typed file facts instead of graph nodes",
+          "metrics": {
+            "symbolNodes": 0,
+            "defineEdges": 0,
+            "filesWithSymbols": 43
+          }
+        },
+        {
+          "id": "provenance-confidence-vocabulary",
+          "status": "passed",
+          "summary": "provenance uses precise v2 confidence vocabulary",
+          "metrics": {
+            "factCount": 689,
+            "confidenceCounts": {
+              "exact": 187,
+              "parser-backed": 502
+            }
+          }
+        },
+        {
+          "id": "manifest-default-provenance",
+          "status": "passed",
+          "summary": "manifest records snapshot-level default provenance",
+          "metrics": {
+            "defaultProvenance": {
+              "source": "syntax",
+              "confidence": "parser-backed",
+              "freshness": "fresh",
+              "snapshotCommit": "4168f492662e38d11287d95bd32ab3a725f689de",
+              "scannerVersion": "0.1.0"
+            }
+          }
+        },
+        {
+          "id": "sqlite-artifacts-valid",
+          "status": "passed",
+          "summary": "SQLite artifacts validate",
+          "metrics": {
+            "schemaVersion": "cartographer.graph.v2",
+            "totals": {
+              "files": 122,
+              "packages": 1,
+              "nodes": 201,
+              "edges": 488,
+              "findings": 0
+            }
+          }
+        },
+        {
+          "id": "no-default-ignored-paths",
+          "status": "passed",
+          "summary": "ignored output paths are excluded"
+        },
+        {
+          "id": "no-env-secret-values",
+          "status": "passed",
+          "summary": "env var nodes do not expose raw values"
+        }
+      ]
+    },
+    {
+      "id": "graph-contract:ark",
+      "title": "ark graph contract",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:22.137Z",
+      "finishedAt": "2026-05-12T23:45:22.647Z",
+      "durationMs": 510,
+      "checks": [
+        {
+          "id": "schema-valid",
+          "status": "passed",
+          "summary": "graph snapshot validates",
+          "metrics": {
+            "durationMs": 313,
+            "files": 738,
+            "nodes": 1030,
+            "edges": 5909,
+            "findings": 0,
+            "gitDirty": true
+          }
+        },
+        {
+          "id": "unique-node-ids",
+          "status": "passed",
+          "summary": "no duplicate node ids",
+          "metrics": {
+            "count": 1030
+          }
+        },
+        {
+          "id": "unique-edge-ids",
+          "status": "passed",
+          "summary": "no duplicate edge ids",
+          "metrics": {
+            "count": 5909
+          }
+        },
+        {
+          "id": "edge-endpoints-exist",
+          "status": "passed",
+          "summary": "all edge endpoints exist",
+          "metrics": {
+            "edgeCount": 5909
+          }
+        },
+        {
+          "id": "symbols-are-typed-facts",
+          "status": "passed",
+          "summary": "symbols are typed file facts instead of graph nodes",
+          "metrics": {
+            "symbolNodes": 0,
+            "defineEdges": 0,
+            "filesWithSymbols": 519
+          }
+        },
+        {
+          "id": "provenance-confidence-vocabulary",
+          "status": "passed",
+          "summary": "provenance uses precise v2 confidence vocabulary",
+          "metrics": {
+            "factCount": 6939,
+            "confidenceCounts": {
+              "exact": 1013,
+              "parser-backed": 5926
+            }
+          }
+        },
+        {
+          "id": "manifest-default-provenance",
+          "status": "passed",
+          "summary": "manifest records snapshot-level default provenance",
+          "metrics": {
+            "defaultProvenance": {
+              "source": "syntax",
+              "confidence": "parser-backed",
+              "freshness": "fresh",
+              "snapshotCommit": "2985a8a2b26b01c8e9fd6bf1e87da33b43e8b1bb",
+              "scannerVersion": "0.1.0"
+            }
+          }
+        },
+        {
+          "id": "sqlite-artifacts-valid",
+          "status": "passed",
+          "summary": "SQLite artifacts validate",
+          "metrics": {
+            "schemaVersion": "cartographer.graph.v2",
+            "totals": {
+              "files": 738,
+              "packages": 1,
+              "nodes": 1030,
+              "edges": 5909,
+              "findings": 0
+            }
+          }
+        },
+        {
+          "id": "no-default-ignored-paths",
+          "status": "passed",
+          "summary": "ignored output paths are excluded"
+        },
+        {
+          "id": "no-env-secret-values",
+          "status": "passed",
+          "summary": "env var nodes do not expose raw values"
+        }
+      ]
+    },
+    {
+      "id": "brief-packet:self",
+      "title": "bounded brief packet",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:22.647Z",
+      "finishedAt": "2026-05-12T23:45:22.757Z",
+      "durationMs": 110,
+      "checks": [
+        {
+          "id": "schema-version",
+          "status": "passed",
+          "summary": "brief packet has expected schema"
+        },
+        {
+          "id": "budget-compliance",
+          "status": "passed",
+          "summary": "brief stayed under requested token budget",
+          "metrics": {
+            "estimatedTokens": 3171,
+            "requestedTokens": 8000,
+            "omissions": 1
+          }
+        },
+        {
+          "id": "anchor-first",
+          "status": "passed",
+          "summary": "path brief ranks the selected path first",
+          "metrics": {
+            "nodeId": "file:src/code-graph/commands.ts",
+            "kind": "File"
+          }
+        },
+        {
+          "id": "bounded-sections",
+          "status": "passed",
+          "summary": "brief sections are bounded",
+          "metrics": {
+            "readFirst": 15,
+            "impact": 11,
+            "validation": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "removal-audit:fixture",
+      "title": "removal audit fixture",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:22.757Z",
+      "finishedAt": "2026-05-12T23:45:22.799Z",
+      "durationMs": 42,
+      "checks": [
+        {
+          "id": "ledger-schema",
+          "status": "passed",
+          "summary": "removal ledger has expected schema"
+        },
+        {
+          "id": "evidence-class-recall",
+          "status": "passed",
+          "summary": "fixture audit found seeded evidence classes"
+        },
+        {
+          "id": "fail-on-leftovers",
+          "status": "passed",
+          "summary": "audit verify fails closed when leftovers remain",
+          "metrics": {
+            "blockers": [
+              "2 active package-dependency hit(s) remain",
+              "2 active import-or-sdk-client hit(s) remain",
+              "2 active client-wrapper hit(s) remain",
+              "3 active env-var hit(s) remain",
+              "1 active ci-secret-name hit(s) remain",
+              "1 active rls-policy hit(s) remain"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "notes-lifecycle:fixture",
+      "title": "notes lifecycle fixture",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:22.799Z",
+      "finishedAt": "2026-05-12T23:45:22.879Z",
+      "durationMs": 80,
+      "checks": [
+        {
+          "id": "ingest-candidate",
+          "status": "passed",
+          "summary": "notes ingest creates candidate notes",
+          "metrics": {
+            "noteId": "note:a26f52da65ae421d"
+          }
+        },
+        {
+          "id": "accept-grounded",
+          "status": "passed",
+          "summary": "audit-clean candidate can be accepted",
+          "metrics": {
+            "noteId": "note:a26f52da65ae421d"
+          }
+        },
+        {
+          "id": "stale-after-drift",
+          "status": "passed",
+          "summary": "accepted note becomes stale after evidence hash drift",
+          "metrics": {
+            "noteId": "note:a26f52da65ae421d"
+          }
+        }
+      ]
+    },
+    {
+      "id": "monorepo-scale:fixture",
+      "title": "monorepo package and surface scale fixture",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:22.879Z",
+      "finishedAt": "2026-05-12T23:45:22.931Z",
+      "durationMs": 52,
+      "checks": [
+        {
+          "id": "package-membership",
+          "status": "passed",
+          "summary": "frontend app file carries package and surface membership",
+          "metrics": {
+            "packageId": "package:apps/web",
+            "surface": "frontend"
+          }
+        },
+        {
+          "id": "generated-surface",
+          "status": "passed",
+          "summary": "generated file is classified as generated surface",
+          "metrics": {
+            "packageId": "package:packages/shared",
+            "surface": "generated"
+          }
+        },
+        {
+          "id": "brief-budget",
+          "status": "passed",
+          "summary": "monorepo path brief stayed under budget",
+          "metrics": {
+            "estimatedTokens": 1144,
+            "requestedTokens": 8000,
+            "readFirst": 3,
+            "impact": 3
+          }
+        },
+        {
+          "id": "brief-membership",
+          "status": "passed",
+          "summary": "brief read-first path exposes package and surface membership",
+          "metrics": {
+            "first": {
+              "rank": 1,
+              "path": "apps/web/src/App.tsx",
+              "nodeId": "file:apps/web/src/App.tsx",
+              "kind": "File",
+              "packageId": "package:apps/web",
+              "surface": "frontend",
+              "reason": "primary graph path",
+              "relationship": "primary",
+              "depth": 0,
+              "confidence": "exact",
+              "evidence": [
+                {
+                  "path": "apps/web/src/App.tsx"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "ark-preflight",
+      "title": "ARK read-only preflight navigation",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:22.931Z",
+      "finishedAt": "2026-05-12T23:45:23.233Z",
+      "durationMs": 302,
+      "checks": [
+        {
+          "id": "target-path-present",
+          "status": "passed",
+          "summary": "target path appears in primary paths"
+        },
+        {
+          "id": "focused-tests-present",
+          "status": "passed",
+          "summary": "focused test paths are present"
+        },
+        {
+          "id": "focused-commands-first",
+          "status": "passed",
+          "summary": "focused validation commands lead compact context"
+        },
+        {
+          "id": "compact-command-limit-recorded",
+          "status": "passed",
+          "summary": "compact validation command limit is recorded",
+          "metrics": {
+            "limit": 20,
+            "omitted": 142,
+            "emitted": 20
+          }
+        },
+        {
+          "id": "preflight-timings-recorded",
+          "status": "passed",
+          "summary": "preflight timing phases recorded",
+          "metrics": {
+            "durationMs": 301,
+            "loadGraphMs": 295,
+            "buildContextMs": 6,
+            "renderPromptMs": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "cli-output-brakes:ark",
+      "title": "ARK CLI output brakes",
+      "status": "passed",
+      "startedAt": "2026-05-12T23:45:23.233Z",
+      "finishedAt": "2026-05-12T23:45:23.407Z",
+      "durationMs": 174,
+      "checks": [
+        {
+          "id": "impact-default-compact",
+          "status": "passed",
+          "summary": "default impact JSON is compact and under the normal token cap",
+          "metrics": {
+            "exitCode": 0,
+            "chars": 16427,
+            "estimatedTokens": 4107,
+            "totals": {
+              "nodes": 53,
+              "edges": 124,
+              "findings": 0
+            },
+            "omissions": {
+              "paths": 0,
+              "nodes": 3,
+              "edges": 124
+            }
+          }
+        },
+        {
+          "id": "context-default-depth-one",
+          "status": "passed",
+          "summary": "default context JSON is compact at depth 1",
+          "metrics": {
+            "exitCode": 0,
+            "chars": 15590,
+            "estimatedTokens": 3898,
+            "depth": 1,
+            "totals": {
+              "slice": {
+                "nodes": 64,
+                "edges": 376,
+                "findings": 0
+              },
+              "impact": {
+                "nodes": 53,
+                "edges": 124,
+                "findings": 0
+              }
+            }
+          }
+        },
+        {
+          "id": "impact-depth-cap",
+          "status": "passed",
+          "summary": "impact depth above the normal cap requires an explicit escape hatch",
+          "metrics": {
+            "exitCode": 1,
+            "stderr": "VALIDATION_FAILED: impact depth above 2 requires --allow-large-output or --debug-graph"
+          }
+        }
+      ]
+    }
+  ],
+  "failures": []
+}

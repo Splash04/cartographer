@@ -124,6 +124,7 @@ async function main(): Promise<void> {
 	suites.push(await notesLifecycleSuite(runOutDir, options.maxFileBytes));
 	suites.push(await monorepoScaleSuite(runOutDir, options.maxFileBytes));
 	suites.push(await arkPreflightSuite(options, join(runOutDir, "ark")));
+	suites.push(await cliOutputBrakesSuite(join(runOutDir, "ark")));
 	if (options.profile === "codex") {
 		suites.push(await codexTraceSuite(options));
 		suites.push(await codexOutcomeSuite(options));
@@ -990,6 +991,106 @@ async function arkPreflightSuite(options: EvalOptions, outDir: string): Promise<
 			),
 		];
 	});
+}
+
+async function cliOutputBrakesSuite(outDir: string): Promise<EvalSuite> {
+	return timedSuite("cli-output-brakes:ark", "ARK CLI output brakes", async () => {
+		const targetPath = "src/kernel/turn-executor.ts";
+		const impact = await runCliCapture(["impact", "--out", outDir, "--path", targetPath, "--json"]);
+		const context = await runCliCapture(["context", "--out", outDir, "--path", targetPath, "--json"]);
+		const tooDeep = await runCliCapture([
+			"impact",
+			"--out",
+			outDir,
+			"--path",
+			targetPath,
+			"--depth",
+			"3",
+			"--json",
+		]);
+		const impactJson = parseJsonObject(impact.stdout);
+		const contextJson = parseJsonObject(context.stdout);
+		return [
+			check("impact-default-compact", () =>
+				impact.exitCode === 0 &&
+				impact.estimatedTokens <= 12_000 &&
+				!Array.isArray(impactJson["nodes"]) &&
+				isRecord(impactJson["omissions"])
+					? passed("default impact JSON is compact and under the normal token cap", {
+							exitCode: impact.exitCode,
+							chars: impact.stdout.length,
+							estimatedTokens: impact.estimatedTokens,
+							totals: impactJson["totals"],
+							omissions: impactJson["omissions"],
+						})
+					: failed("impact-default-compact", "default impact JSON was too large or emitted a debug graph", {
+							exitCode: impact.exitCode,
+							chars: impact.stdout.length,
+							estimatedTokens: impact.estimatedTokens,
+							stderr: impact.stderr,
+							keys: Object.keys(impactJson),
+						}),
+			),
+			check("context-default-depth-one", () =>
+				context.exitCode === 0 &&
+				context.estimatedTokens <= 12_000 &&
+				contextJson["depth"] === 1 &&
+				!isRecord(contextJson["slice"]) &&
+				!isRecord(contextJson["impact"])
+					? passed("default context JSON is compact at depth 1", {
+							exitCode: context.exitCode,
+							chars: context.stdout.length,
+							estimatedTokens: context.estimatedTokens,
+							depth: contextJson["depth"],
+							totals: contextJson["totals"],
+						})
+					: failed("context-default-depth-one", "default context JSON was too large or not depth-bounded", {
+							exitCode: context.exitCode,
+							chars: context.stdout.length,
+							estimatedTokens: context.estimatedTokens,
+							depth: contextJson["depth"],
+							stderr: context.stderr,
+							keys: Object.keys(contextJson),
+						}),
+			),
+			check("impact-depth-cap", () =>
+				tooDeep.exitCode !== 0 && tooDeep.stderr.includes("impact depth above 2")
+					? passed("impact depth above the normal cap requires an explicit escape hatch", {
+							exitCode: tooDeep.exitCode,
+							stderr: tooDeep.stderr.trim(),
+						})
+					: failed("impact-depth-cap", "impact depth above the normal cap did not fail closed", {
+							exitCode: tooDeep.exitCode,
+							stdout: tooDeep.stdout.slice(0, 500),
+							stderr: tooDeep.stderr,
+						}),
+			),
+		];
+	});
+}
+
+async function runCliCapture(args: readonly string[]): Promise<{
+	readonly exitCode: number;
+	readonly stdout: string;
+	readonly stderr: string;
+	readonly estimatedTokens: number;
+}> {
+	const proc = Bun.spawn(["bun", "src/cli/index.ts", ...args], {
+		cwd: process.cwd(),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const [stdout, stderr, exitCode] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	return {
+		exitCode,
+		stdout,
+		stderr,
+		estimatedTokens: Math.ceil(stdout.length / 4),
+	};
 }
 
 async function timedSuite(

@@ -504,7 +504,7 @@ async function runImpact(args: ParsedArgs): Promise<Result<void, HarnessError>> 
 		const path = requiredFlag(args, "path", "usage: cartographer impact --path src/index.ts");
 		rejectLargeImpact(args);
 		const graph = await loadGraph(args);
-		await writeSlice(args, impactGraph(graph, path, { maxDepth: optionalNumberFlag(args, "depth") }));
+		await writeSlice(args, impactGraph(graph, path, { maxDepth: optionalNumberFlag(args, "depth") ?? 1 }));
 		return ok(undefined);
 	} catch (cause) {
 		if (cause instanceof HarnessError) return err(cause);
@@ -516,7 +516,7 @@ async function runContext(args: ParsedArgs): Promise<Result<void, HarnessError>>
 	try {
 		const path = requiredFlag(args, "path", "usage: cartographer context --path src/index.ts");
 		const graph = await loadGraph(args);
-		const depth = optionalNumberFlag(args, "depth");
+		const depth = optionalNumberFlag(args, "depth") ?? 1;
 		const selector = flagString(args, "selector", contextSelectorFor(path));
 		rejectBroadSelector(args, selector);
 		await writeContext(args, buildGraphContext(graph, { path, selector, depth }));
@@ -1328,7 +1328,7 @@ function cartographerHelp(): string {
 		"  --path <path>              File path or node id for impact/context",
 		"  --symbol <symbol>          Brief around a symbol name or <path>:<name>",
 		"  --trace <path>             RuntimeEvent[] JSON trace for adoption analysis",
-		"  --depth <n>                Limit impact traversal depth. Default: unbounded",
+		"  --depth <n>                Limit impact traversal depth. Default: 1 for impact/context/preflight",
 		"  --json                     Emit JSON for view, brief, audit, notes, slice, impact, context, adoption, and annotations",
 		"  --fresh                    For verify, compare artifacts against a live graph from --root",
 		"  --require-graph-first      For adoption, fail if graph was unused, preflight failed, or repo source was read before graph context",

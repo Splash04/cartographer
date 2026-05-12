@@ -71,6 +71,7 @@ Observed gaps:
 - Local workspace package dependencies now emit package-to-package `DEPENDS_ON` edges, so a shared package impact can surface dependent app packages and their validation scripts. The runner still needs a monorepo fixture that scores dependency-edge recall, rejects external dependency false positives, and checks affected-package accuracy.
 - Preflight JSON now includes command/timestamp metadata plus total and phase timings, so future reports can measure graph load, context build, and prompt render speed without parsing shell wall time.
 - Dirty-worktree preflight includes untracked source and test files and now derives focused Bun test commands from direct source-to-test edges when the package test script is compatible. Focused path arguments are emitted as exact Bun paths such as `./src/...` or `./tests/...` instead of brittle substring filters. Future evals should preserve this behavior and extend command synthesis beyond simple root `bun test` scripts.
+- Normal CLI output brakes now have a deterministic ARK receipt: default `impact --json` emits compact output at depth 1 instead of full nested graph payloads, default `context --json` is compact at depth 1, and `impact --depth 3` fails unless `--allow-large-output` or `--debug-graph` is present.
 
 Manual contract checks now pass for fresh ARK and Axia snapshots:
 
@@ -401,16 +402,21 @@ Current generated reports:
 - `docs/reports/cartographer-code-graph-codex-2026-05-12T23-36-22-749Z.json`
 - `docs/reports/cartographer-code-graph-smoke-2026-05-12T23-37-52-581Z.json`
 - `docs/reports/cartographer-code-graph-codex-2026-05-12T23-37-52-604Z.json`
+- `docs/reports/cartographer-code-graph-smoke-2026-05-12T23-42-31-377Z.json`
+- `docs/reports/cartographer-code-graph-codex-2026-05-12T23-42-37-069Z.json`
+- `docs/reports/cartographer-code-graph-smoke-2026-05-12T23-45-21-977Z.json`
+- `docs/reports/cartographer-code-graph-codex-2026-05-12T23-45-31-176Z.json`
 
 Latest smoke report:
 
-- status: `passed`, suites: `graph-contract:self`, `graph-contract:ark`, `brief-packet:self`, `removal-audit:fixture`, `notes-lifecycle:fixture`, `monorepo-scale:fixture`, `ark-preflight`, failures: 0
+- status: `passed`, suites: `graph-contract:self`, `graph-contract:ark`, `brief-packet:self`, `removal-audit:fixture`, `notes-lifecycle:fixture`, `monorepo-scale:fixture`, `ark-preflight`, `cli-output-brakes:ark`, failures: 0
 - Latest graph contract suites run 10 checks each, including `symbols-are-typed-facts`, which verifies 0 symbol graph nodes and 0 `DEFINES` edges while preserving typed symbol facts, `provenance-confidence-vocabulary`, which rejects legacy `deterministic` confidence and requires the precise v2 vocabulary, and `manifest-default-provenance`, which verifies snapshot-level default provenance is recorded. The SQLite artifact compatibility check now also covers the default v2 output layout, including `notes.jsonl`, `briefs/`, `audits/`, `reports/`, and `exports/`.
 - The removal audit command test now verifies `audit verify` uses a live graph by default by adding a leftover file after ledger creation and asserting verification catches it.
+- `cli-output-brakes:ark` proves default ARK `impact --json` stays compact at 4,107 estimated tokens, default ARK `context --json` stays compact at 3,898 estimated tokens with depth 1, and `impact --depth 3` fails closed without an explicit large/debug flag.
 
 Latest recorded Codex trace report:
 
-- status: `passed`, suites: `graph-contract:self`, `graph-contract:ark`, `brief-packet:self`, `removal-audit:fixture`, `notes-lifecycle:fixture`, `monorepo-scale:fixture`, `ark-preflight`, `codex-trace-adoption`, `codex-trace-outcomes`, failures: 0
+- status: `passed`, suites: `graph-contract:self`, `graph-contract:ark`, `brief-packet:self`, `removal-audit:fixture`, `notes-lifecycle:fixture`, `monorepo-scale:fixture`, `ark-preflight`, `cli-output-brakes:ark`, `codex-trace-adoption`, `codex-trace-outcomes`, failures: 0
 - Graph contract suites now include SQLite artifact compatibility checks, symbol schema-diet checks, provenance confidence-vocabulary checks, and manifest default-provenance checks in addition to in-memory graph schema checks.
 - Recorded traces include `baseline-direct`, `cartographer-brief`, and `cartographer-brief-plus-audit` conditions.
 - The Supabase removal comparison now requires a passing `audit-evidence-lift` check for `cartographer-brief-plus-audit`.
