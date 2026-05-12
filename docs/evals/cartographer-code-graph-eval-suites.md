@@ -43,9 +43,9 @@ Current standalone Cartographer read-only ARK target evidence, measured on 2026-
 | `cartographer:index --root /Users/saint/dev/agent-runtime-kernel --out /tmp/cartographer-ark-codegraph` | 0.41s wall time, 227,573,760 bytes max RSS |
 | ARK graph size | 669 files, 4,620 nodes, 10,049 edges, 0 findings |
 | ARK edge baselines | 835 `TESTS`, 2,000 `IMPORTS`, 1,177 `TYPE_IMPORTS`, 1,351 `EXPORTS`, 111 `USES_ENV`, 37 `TABLE_REFERENCES_TABLE` |
-| `cartographer preflight --root /Users/saint/dev/agent-runtime-kernel --live --path src/code-graph/commands.ts --out /tmp/cartographer-ark-codegraph --json` | 368ms total; 353ms graph load, 13ms context build, 2ms prompt render |
+| `cartographer preflight --root /Users/saint/dev/agent-runtime-kernel --live --path src/code-graph/commands.ts --out /tmp/cartographer-ark-codegraph --json` | 327ms total; 314ms graph load, 11ms context build, 1ms prompt render |
 | Preflight navigation evidence | 17 primary paths, 2 focused test paths, 0 findings |
-| Focused validation commands surfaced first | `bun test ./src/code-graph/__tests__/builder.test.ts`, `bun test ./src/code-graph/__tests__/commands.test.ts`, `bun test ./src/code-graph` |
+| Compact validation commands | 11 commands after filtering; direct focused tests and module test first, safe broad commands retained, watch/live variants omitted |
 
 Axia OS read-only stress run, measured on 2026-05-11:
 

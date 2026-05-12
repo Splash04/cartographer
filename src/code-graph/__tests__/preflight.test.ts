@@ -143,10 +143,11 @@ describe("runCartographerPreflight", () => {
 		expect(result.ok).toBe(true);
 		if (!result.ok) throw result.error;
 		const focusedCommand = "test:src/index.test.ts: bun test ./src/index.test.ts";
-		const packageCommand = "test:e2e: bun run test:e2e";
+		const safePackageCommand = "typecheck: bun run typecheck";
 		expect(result.data.context.summary.validationCommands.map((item) => item.name).at(0)).toBe(
 			"test:src/index.test.ts",
 		);
+		expect(result.data.context.summary.validationCommands.length).toBeLessThanOrEqual(20);
 		expect(result.data.context.summary.validationCommands).toContainEqual({
 			packageId: "package:.",
 			scriptId: "script:.:typecheck",
@@ -156,8 +157,11 @@ describe("runCartographerPreflight", () => {
 			path: "package.json",
 		});
 		expect(result.data.promptText).toContain(focusedCommand);
-		expect(result.data.promptText.indexOf(focusedCommand)).toBeLessThan(result.data.promptText.indexOf(packageCommand));
-		expect(result.data.promptText).toContain("- ... ");
+		expect(result.data.promptText).toContain(safePackageCommand);
+		expect(result.data.promptText).not.toContain("test:e2e: bun run test:e2e");
+		expect(result.data.promptText.indexOf(focusedCommand)).toBeLessThan(
+			result.data.promptText.indexOf(safePackageCommand),
+		);
 	});
 
 	test("reads persisted graph artifacts when live mode is disabled", async () => {

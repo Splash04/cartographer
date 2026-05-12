@@ -53,9 +53,9 @@ Read-only ARK target evidence:
 - index time: 0.41s wall
 - max RSS: 227,573,760 bytes
 - graph: 669 files, 4,620 nodes, 10,049 edges, 0 findings
-- live preflight for `src/code-graph/commands.ts`: 368ms total
+- live preflight for `src/code-graph/commands.ts`: 327ms total after compact validation-command filtering
 - preflight surfaced `src/code-graph/commands.ts`, `src/code-graph/__tests__/commands.test.ts`, `src/code-graph/__tests__/builder.test.ts`
-- first validation commands included `bun test ./src/code-graph/__tests__/builder.test.ts`, `bun test ./src/code-graph/__tests__/commands.test.ts`, and `bun test ./src/code-graph`
+- compact validation commands dropped from 114 to 11, led by `bun test ./src/code-graph/__tests__/builder.test.ts`, `bun test ./src/code-graph/__tests__/commands.test.ts`, and `bun test ./src/code-graph`
 
 ## Goodhart Shield
 

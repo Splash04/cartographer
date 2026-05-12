@@ -38,7 +38,7 @@ export function compactGraphContext(context: GraphContext): GraphContextCompact 
 		selector: context.selector,
 		depth: context.depth,
 		manifest: context.manifest,
-		summary: context.summary,
+		summary: compactGraphContextSummary(context.summary),
 		totals: {
 			slice: graphSliceTotals(context.slice),
 			impact: graphSliceTotals(context.impact),
@@ -100,6 +100,46 @@ function graphSliceTotals(slice: GraphSlice): GraphContextCompact["totals"]["sli
 		edges: slice.edges.length,
 		findings: slice.findings.length,
 	};
+}
+
+function compactGraphContextSummary(summary: GraphContextSummary): GraphContextSummary {
+	return {
+		...summary,
+		validationCommands: compactValidationCommands(summary),
+	};
+}
+
+function compactValidationCommands(summary: GraphContextSummary): readonly ValidationCommandSummary[] {
+	const relevantFocused = summary.validationCommands.filter((command) =>
+		validationCommandMatchesContext(command, summary),
+	);
+	const packageCommands = summary.validationCommands.filter(
+		(command) => !command.scriptId.includes("#") && isCompactPackageCommand(command),
+	);
+	const fallbackCommands = relevantFocused.length === 0 ? summary.validationCommands : [];
+	return mergeSummaryItems(relevantFocused, packageCommands, (item) => item.scriptId)
+		.concat(fallbackCommands.filter((command) => !relevantFocused.some((item) => item.scriptId === command.scriptId)))
+		.slice(0, MAX_COMPACT_VALIDATION_COMMANDS);
+}
+
+function isCompactPackageCommand(command: ValidationCommandSummary): boolean {
+	return /^(build|check|ci|lint(:eslint)?|test|typecheck|validate|verify)$/i.test(command.name);
+}
+
+function validationCommandMatchesContext(command: ValidationCommandSummary, summary: GraphContextSummary): boolean {
+	const scope = testCommandScope(command);
+	if (scope === undefined) return false;
+	return (
+		summary.testPaths.includes(scope) ||
+		summary.primaryPaths.some((path) => path === scope || path.startsWith(`${scope}/`)) ||
+		summary.impactPaths.some((path) => path === scope || path.startsWith(`${scope}/`))
+	);
+}
+
+function testCommandScope(command: ValidationCommandSummary): string | undefined {
+	if (!command.name.startsWith("test:")) return undefined;
+	const scope = command.name.slice("test:".length);
+	return scope.length === 0 ? undefined : scope;
 }
 
 function summarizeContext(slice: GraphSlice, impact: GraphSlice): GraphContextSummary {
@@ -239,3 +279,5 @@ const EMPTY_GRAPH_SLICE_SUMMARY: GraphSliceSummary = {
 	validationCommands: [],
 	annotationNotes: [],
 };
+
+const MAX_COMPACT_VALIDATION_COMMANDS = 20;
