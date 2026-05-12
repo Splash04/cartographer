@@ -1,11 +1,13 @@
 # Cartographer Code Graph Plan Integrity Audit
 
 Status: plan audited, runner still blocked on approval
-Date: 2026-05-11
+Date: 2026-05-12
 
 ## Synthesis
 
-The Cartographer eval plan is trustworthy as a plan, but not yet valid as eval evidence. It is grounded in real traces, names the Goodhart traps, separates deterministic checks from live Codex and judge work, and now defines the Codex annotation run contract as a graph-first, evidence-read, candidate-only, audit-before-review workflow. The single most important fix is still to approve and implement the deterministic smoke runner so the plan can produce append-only JSON reports.
+The Cartographer eval plan is trustworthy as a plan, but not yet valid as eval evidence.
+
+The plan is now scoped to the standalone Cartographer repo. It is grounded in a real read-only ARK target run, includes graph-speed and navigation evidence, separates deterministic graph facts from semantic overlay guidance, and names the Goodhart traps. The single most important missing piece is still a deterministic smoke runner that writes append-only JSON reports.
 
 This audit does not approve or scaffold:
 
@@ -15,123 +17,161 @@ This audit does not approve or scaffold:
 - judge prompts or calibration labels
 - `docs/reports/cartographer-code-graph-*.json`
 
+## Current Repository Evidence
+
+- branch: `main`
+- remote status: `main...origin/main`
+- latest commits:
+  - `479e8b6 feat: report compact context omissions`
+  - `0126cff fix: focus compact cartographer validation commands`
+  - `9f31212 docs: refresh cartographer eval audit`
+  - `149581a feat: add standalone cartographer graph cli`
+
+Current package scripts include Cartographer graph commands and normal checks:
+
+- `cartographer`
+- `cartographer:index`
+- `cartographer:update`
+- `cartographer:view`
+- `cartographer:slice`
+- `cartographer:impact`
+- `cartographer:context`
+- `cartographer:preflight`
+- `cartographer:adoption`
+- `cartographer:annotate`
+- `cartographer:annotations`
+- `typecheck`
+- `test`
+
+Current package scripts do not include:
+
+- `eval:cartographer`
+- `eval:cartographer:smoke`
+- `eval:cartographer:baseline`
+- `eval:cartographer:codex`
+
+Current report state:
+
+- no `docs/reports/cartographer-code-graph-*.json` reports exist
+- no `scripts/cartographer-code-graph-evals.ts` runner exists
+
+## Read-Only ARK Target Evidence
+
+The standalone CLI was run against `/Users/saint/dev/agent-runtime-kernel` with output under `/tmp`, not inside ARK.
+
+Index evidence:
+
+- command: `bun run cartographer:index -- --root /Users/saint/dev/agent-runtime-kernel --out /tmp/cartographer-ark-codegraph --max-file-bytes 500000`
+- graph: 669 files, 4,620 nodes, 10,049 edges, 0 findings
+- edge highlights: 835 `TESTS`, 2,000 `IMPORTS`, 1,177 `TYPE_IMPORTS`, 1,351 `EXPORTS`, 111 `USES_ENV`, 37 `TABLE_REFERENCES_TABLE`
+- timing: 0.41s wall, 227,573,760 bytes max RSS
+
+Preflight evidence:
+
+- command: `bun run cartographer:preflight -- --root /Users/saint/dev/agent-runtime-kernel --live --path src/code-graph/commands.ts --out /tmp/cartographer-ark-codegraph --json`
+- duration: 335ms
+- graph load: 321ms
+- context build: 13ms
+- prompt render: 1ms
+- primary paths: 17
+- test paths: 2
+- compact validation commands: 11
+- omitted validation commands: 102
+- findings: 0
+- first validation commands:
+  - `bun test ./src/code-graph/__tests__/builder.test.ts`
+  - `bun test ./src/code-graph/__tests__/commands.test.ts`
+  - `bun test ./src/code-graph`
+
 ## Score
 
-Pass: 21
-Fail: 11
+Pass: 19
+Fail: 10
 N/A: 6
 
-Most failures are expected because this is a pre-implementation plan audit. They become real invalidators only if someone claims Cartographer eval coverage before the runner, reports, and calibration exist.
-
-The score now includes the graph-quality addendum below. Those addendum passes mean the plan names the required controls; they do not mean a runner enforces them yet.
-
-## Current Verification Snapshot
-
-Last checked on 2026-05-11 against `a346b068ff997ddcb31df4af28f49428985b4976` with a clean worktree before this audit-doc refresh.
-
-- `src/core/runtime.ts`
-- `src/core/runtime/workspace-turns.ts`
-- `src/core/runtime/turn-preparation.ts`
-- `src/core/runtime/completion.ts`
-- `docs/features/core.md`
-- `.garden/master-refactor-plan.md`
-
-The workspace-turn extraction moves runtime workspace lifecycle into `RuntimeWorkspaceTurns`. The turn-preparation extraction moves runtime/model/session selection, artifact materialization, graph preflight, and effective config shaping into `RuntimeTurnPreparation`. The completion extraction moves terminal claim completion, runtime event persistence, completed-session persistence, sink completion, and telemetry into `RuntimeCompletion`. These strengthen the harness substrate by making turn navigation easier, but they are not Cartographer eval scaffolding.
-
-`package.json` still only exposes the existing `eval:scale*` scripts. The direct gate audit still reports no `.evals/approval.md`, no `scripts/cartographer-code-graph-evals.ts`, no `eval:cartographer:*` package scripts, and no `docs/reports/cartographer-code-graph-*.json` reports.
-
-Recent live preflight for `src/core/runtime/completion.ts` passed with 656 files, 4,572 nodes, 9,886 edges, 0 findings, and 378 ms total preflight time in the pre-commit dirty worktree. Rerun this audit document's own preflight after edits when a fresh planning-doc timing receipt is needed.
+Most failures are expected because this is still a pre-implementation plan audit. They become invalidators only if Cartographer claims runnable eval coverage before the runner, package scripts, reports, and calibration artifacts exist.
 
 ## Structural Checks
 
 | # | Check | Status | Evidence |
 | --- | --- | --- | --- |
-| 1 | Suite has a written plan before code | pass | `docs/evals/cartographer-code-graph-eval-suites.md` exists and is marked `Status: plan pending implementation approval`. |
-| 2 | Report shape matches ARK schema | fail | The plan lists the required ARK report fields, but no Cartographer runner or report exists to validate. |
-| 3 | Reports land in `docs/reports` | fail | `find docs/reports -maxdepth 1 -name 'cartographer-code-graph-*.json' -print` returned no files. |
-| 4 | Run IDs encode profile and iteration/timestamp | fail | Report paths are planned, but there is no generated `runId` to inspect. |
-| 5 | Status vocabulary is fixed | fail | The runner handoff references ARK shape, but no Cartographer runner enforces `passed`, `failed`, `skipped`, or `informational`. |
-| 6 | Package scripts exist for smoke and baseline | fail | `package.json` has no `eval:cartographer`, `eval:cartographer:smoke`, or `eval:cartographer:baseline` scripts. |
-
-## Graph-Quality Addendum
-
-| # | Check | Status | Evidence |
-| --- | --- | --- | --- |
-| G1 | Approval boundary is still intact | pass | Direct gate audit still reports no `.evals/approval.md`, no `scripts/cartographer-code-graph-evals.ts`, no `eval:cartographer:*` package scripts, and no `docs/reports/cartographer-code-graph-*.json` reports. |
-| G2 | Parser, compiler, agent, and human provenance are separated | pass | `docs/evals/cartographer-code-graph-eval-suites.md` names `provenance-confidence-valid`; the handoff makes parser-lite or Tree-sitter facts claiming `compiler-backed`, and agent annotations claiming `deterministic`, hard failures. |
-| G3 | Precision-provider receipts are required | pass | The eval plan and handoff require TypeScript, SCIP, or LSP provider receipts before claiming compiler-backed semantic edges, including stale/skipped fallback reasons. |
-| G4 | Graph mode is explicit | pass | The handoff requires every graph sample to report `live`, `persisted`, or `fixture`; live mode is current-work evidence, persisted mode must cite snapshot commit/scanner version, and fixture mode must cite source paths and hashes. |
-| G5 | Temporal, dirty, and deleted-path behavior is in scope | pass | The handoff adds dirty/deleted mode accuracy and temporal graph-diff recall for package/task graph evolution, migration history versus generated types, and safe IaC/resource drift evidence. |
-| G6 | Codex annotation runs are constrained | pass | `docs/prds/cartographer-v2-code-graph.md` defines the Codex annotation run contract: graph preflight first, deterministic slice read, direct evidence reads, candidate-only writeback, explicit inference labels, and `cartographer annotations --json` before review. |
-| G7 | Annotation usefulness cannot substitute for graph correctness | pass | `docs/evals/cartographer-code-graph-eval-suites.md` requires semantic overlay scoring to add evidence-backed guidance absent from the deterministic graph, and to include trace evidence that the annotator used graph preflight plus direct source reads before writeback. |
+| 1 | Suite has a written plan before code | pass | `docs/evals/cartographer-code-graph-eval-suites.md` exists and remains plan-first. |
+| 2 | Report shape matches the required schema | fail | The plan names the report shape, but no Cartographer runner or report exists to validate. |
+| 3 | Reports land in `docs/reports` | fail | No `docs/reports/cartographer-code-graph-*.json` report exists. |
+| 4 | Run IDs encode profile and timestamp | fail | No generated `runId` exists. |
+| 5 | Status vocabulary is fixed | fail | No runner enforces `passed`, `failed`, `skipped`, or `informational`. |
+| 6 | Package scripts exist for smoke and baseline | fail | `package.json` has no `eval:cartographer:*` scripts. |
 
 ## Tier 1 Deterministic Checks
 
 | # | Check | Status | Evidence |
 | --- | --- | --- | --- |
-| 7 | Tier 1 exists and does cheap checks | fail | Graph-contract and navigation checks are planned, but not runnable as a Cartographer eval suite. |
-| 8 | Zero LLM calls in Tier 1 | pass | Smoke profile explicitly excludes live model calls by default. |
+| 7 | Tier 1 exists and does cheap checks | fail | Graph-contract and navigation checks are planned, but not runnable as an eval suite. |
+| 8 | Zero LLM calls in Tier 1 | pass | The proposed smoke profile explicitly excludes live model calls. |
 | 9 | Tier 1 failures block before Tier 2 | fail | No runner exists to enforce fail-fast ordering. |
+| 10 | Graph modes are explicit | pass | Docs distinguish live, persisted, and fixture modes; ARK target evidence records live mode and `/tmp` output. |
+| 11 | Compact output records omissions | pass | `GraphContextCompact.omissions.validationCommands` is implemented and tested; ARK preflight reports 102 omitted validation commands. |
 
 ## Tier 2 Judge Checks
 
 | # | Check | Status | Evidence |
 | --- | --- | --- | --- |
-| 10 | Rubric is binary decomposed | pass | Semantic overlay rubric is listed as binary checks, not a 1-5 scale. |
-| 11 | Judge uses a different model family | pass | Judge requirements state the judge must use a different model family from the annotator. |
-| 12 | Judge output is structured JSON | pass | Judge requirements state output must be structured JSON and schema-validated. |
-| 13 | Full trace is passed to judge where trajectory matters | pass | Agent-harness scoring stores raw `RuntimeEvent[]` evidence; semantic-overlay judging sees graph slice, candidate annotations, and gold records. |
-| 14 | Pairwise comparisons swap order and average | n/a | The current semantic-overlay plan is not pairwise. |
-| 15 | Calibration gold set exists | fail | The plan requires calibration, but no gold labels or calibration records exist. |
-| 16 | Judge-human agreement is documented above threshold | fail | No judge prompt, calibration run, Cohen's kappa, or agreement report exists. |
+| 12 | Rubric is binary decomposed | pass | Semantic overlay criteria are binary in the plan, not a 1-5 quality score. |
+| 13 | Judge uses a different model family | pass | Judge requirements state a different model family from the annotator. |
+| 14 | Judge output is structured JSON | pass | Judge requirements state structured JSON with validation. |
+| 15 | Full trace is passed to judge where trajectory matters | pass | Agent-harness scoring is planned around raw trace evidence, not final-only answers. |
+| 16 | Pairwise comparisons swap order and average | n/a | The current semantic-overlay plan is not pairwise. |
+| 17 | Calibration gold set exists | fail | No gold labels or calibration records exist. |
+| 18 | Judge-human agreement is documented above threshold | fail | No judge prompt, calibration run, Cohen's kappa, or agreement report exists. |
 
 ## Tier 3 Human Review
 
 | # | Check | Status | Evidence |
 | --- | --- | --- | --- |
-| 17 | Human review cadence exists | fail | Human calibration is deferred; no cadence file or owner loop exists yet. |
-| 18 | New failures feed back into Tier 1 or Tier 2 | fail | The plan describes eval evolution, but no runner/report/failure queue exists to close the loop. |
+| 19 | Human review cadence exists | fail | Calibration and human review are deferred. |
+| 20 | New failures feed back into Tier 1 or Tier 2 | fail | No runner/report/failure queue exists yet. |
 
-## Integrity Invalidators
-
-| # | Check | Status | Evidence |
-| --- | --- | --- | --- |
-| 19 | No easier flag is used for safety or scale claims | pass | The plan separates deterministic smoke, baseline, and opt-in live Codex profiles. |
-| 20 | Mandatory live suites are not silently skipped | n/a | Live Codex is explicitly opt-in, not mandatory smoke coverage. |
-| 21 | Safety checks are not downgraded to informational | pass | The plan says hallucinated paths are failures and graph-mandated violations fail. |
-| 22 | Sample counts and concurrency match documented defaults | pass | Smoke and baseline sample ranges are documented; no runner can weaken them yet. |
-| 23 | Image changes are scoped in the claim | n/a | Cartographer eval plan is local graph/navigation first, not container-image performance. |
-| 24 | Reports are not manually edited | n/a | No Cartographer reports exist. |
-| 25 | Failed, slow, and retried samples are recorded | pass | Goodhart controls explicitly ban hiding failed, slow, or retried samples. |
-| 26 | Production code does not special-case eval labels or run IDs | pass | `rg` found Cartographer eval markers only in tests/docs/research; the only production `ark.eval` usage is the existing scale runner metadata in `scripts/ark-scale-evals.ts`. |
-| 27 | Optimization does not weaken production behavior in same PR | n/a | Current work is plan/audit work, not a Cartographer optimization claim. |
-| 28 | Claims do not rely on stubbed provider metrics | pass | Plan separates local graph timings from live Codex/model/provider latency. |
-
-## Lifecycle And Saturation Checks
+## Integrity Checks
 
 | # | Check | Status | Evidence |
 | --- | --- | --- | --- |
-| 29 | Pass rate is not saturated at 100% | n/a | No Cartographer eval report exists yet. |
-| 30 | Suite changes over time | pass | The plan and audit docs have changed across recent commits as new trace evidence landed. |
-| 31 | Single-signal optimization risk is addressed | pass | Plan scores recall, precision, hallucinated paths, slice size, adoption, validation recall, timings, and Goodhart controls together. |
+| 21 | No easier flag is used for safety or scale claims | pass | The plan separates deterministic smoke, baseline, and opt-in live Codex profiles. |
+| 22 | Mandatory live suites are not silently skipped | n/a | Live Codex is explicitly opt-in. |
+| 23 | Safety checks are not downgraded to informational | pass | Hallucinated paths and graph-mandated violations are planned failures. |
+| 24 | Sample counts and concurrency match documented defaults | pass | The runner does not exist, so no implementation can weaken them yet. |
+| 25 | Image changes are scoped in the claim | n/a | The suite is local graph/navigation first, not container-image performance. |
+| 26 | Reports are not manually edited | n/a | No reports exist. |
+| 27 | Failed, slow, and retried samples are recorded | pass | The plan requires failed, slow, and retried evidence to be recorded. |
+| 28 | Production code does not special-case eval labels or run IDs | pass | Current production code has no `eval:cartographer` runner labels or report-path special cases. |
+| 29 | Claims do not rely on stubbed provider metrics | pass | Current claims are local CLI/manual ARK target evidence only. |
+
+## Lifecycle Checks
+
+| # | Check | Status | Evidence |
+| --- | --- | --- | --- |
+| 30 | Pass rate is not saturated at 100% | n/a | No Cartographer eval report exists. |
+| 31 | Suite changes over time | pass | The plan/audit docs changed as standalone CLI and ARK target evidence landed. |
+| 32 | Single-signal optimization risk is addressed | pass | The plan scores recall, precision, hallucinated paths, slice size, adoption, validation recall, omissions, and timings together. |
 
 ## Hard Findings
 
-- HARD GAP: There is no runnable Cartographer eval suite. A plan cannot support a claim that Cartographer evals pass.
-- HARD GAP: There are no Cartographer eval reports under `docs/reports`, so there is no append-only receipt for graph speed, navigation recall, or adoption-rate claims.
-- HARD GAP: Semantic-overlay judging is correctly deferred, but any usefulness claim about annotations remains unsupported until gold labels, judge prompts, and agreement metrics exist.
-- HARD GAP: Provenance, precision-provider, graph-mode, and temporal-diff controls are now planned, but there is no runner enforcement or report evidence for them.
-- HARD GAP: The Codex annotation contract is documented, but there is no repeatable harness report proving agents followed graph preflight, direct evidence reads, candidate-only writeback, and audit-before-review across samples.
-- HARD GAP: Runtime workspace-turn extraction improves codebase navigability for harness work, but it does not produce speed, adoption, or understanding reports.
+- HARD GAP: There is no runnable Cartographer eval suite.
+- HARD GAP: There are no Cartographer eval reports under `docs/reports`.
+- HARD GAP: There are no `eval:cartographer:*` package scripts.
+- HARD GAP: The ARK target evidence is manual `/tmp` evidence, not an append-only eval report.
+- HARD GAP: Semantic-overlay usefulness remains unsupported until gold labels, judge prompts, and agreement metrics exist.
+- HARD GAP: Codex-style harness adoption can be scored by `cartographer adoption`, but there is no repeatable standalone live Codex eval profile in this repo yet.
 
 ## Anti-Pattern Findings
 
-- No mock-echo pattern found in the plan. The smoke runner is planned to call real graph APIs, not assert on mocked outputs.
-- No numeric rubric found for semantic overlay scoring. The rubric is binary decomposed.
-- No same-family judge usage found. The plan requires a different model family.
-- No trace-opaque agent scoring found. The plan requires raw trajectory evidence.
-- No single-signal optimization found. The plan explicitly rejects edge-count-only and final-answer-only scoring.
+- No mock-echo eval pattern found in the plan.
+- No numeric 1-5 rubric found for semantic overlay scoring.
+- No same-family judge usage is planned.
+- No trace-opaque scoring is planned.
+- No single-signal edge-count-only optimization is planned.
 
 ## Current Gate
 
-The approval gate remains valid. The next implementation step is to approve the deterministic smoke runner, then create the runner, package scripts, structured smoke tasks, and first JSON report. Until that approval exists, planning/audit work can continue, but no eval runner, fixture snapshots, judge prompt, package scripts, approval receipt, or Cartographer eval report should be scaffolded.
+The approval gate remains valid.
+
+The next implementation step is to approve the deterministic smoke runner, then create the runner, package scripts, structured smoke tasks, and first JSON report. Until that approval exists, planning/audit work can continue, but no eval runner, fixture snapshots, judge prompt, package scripts, approval receipt, or Cartographer eval report should be scaffolded.
