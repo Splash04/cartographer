@@ -47,6 +47,9 @@ export function compactGraphContext(context: GraphContext): GraphContextCompact 
 		omissions: {
 			validationCommands: Math.max(0, context.summary.validationCommands.length - summary.validationCommands.length),
 		},
+		limits: {
+			validationCommands: MAX_COMPACT_VALIDATION_COMMANDS,
+		},
 	};
 }
 

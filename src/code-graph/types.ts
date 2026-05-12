@@ -217,9 +217,14 @@ export interface GraphContextCompact {
 	readonly summary: GraphContextSummary;
 	readonly totals: GraphContextTotals;
 	readonly omissions: GraphContextOmissions;
+	readonly limits: GraphContextLimits;
 }
 
 export interface GraphContextOmissions {
+	readonly validationCommands: number;
+}
+
+export interface GraphContextLimits {
 	readonly validationCommands: number;
 }
 

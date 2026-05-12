@@ -42,6 +42,7 @@ describe("runCartographerPreflight", () => {
 		expect(result.data.context.summary.primaryPaths).toContain("src/index.ts");
 		expect(result.data.context.summary.testPaths).toContain("src/index.test.ts");
 		expect(result.data.context.summary.validationCommands.map((item) => item.name)).toContain("test");
+		expect(result.data.context.limits.validationCommands).toBe(20);
 		expect(result.data.context.omissions.validationCommands).toBe(0);
 		expect(result.data.context.summary.validationCommands).toContainEqual({
 			packageId: "package:.",

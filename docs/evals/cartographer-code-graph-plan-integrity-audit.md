@@ -76,7 +76,8 @@ Preflight evidence:
 - primary paths: 17
 - test paths: 2
 - compact validation commands: 11
-- omitted validation commands: 102
+- validation command limit: 20
+- omitted validation commands: 103
 - findings: 0
 - first validation commands:
   - `bun test ./src/code-graph/__tests__/builder.test.ts`
@@ -110,7 +111,7 @@ Most failures are expected because this is still a pre-implementation plan audit
 | 8 | Zero LLM calls in Tier 1 | pass | The proposed smoke profile explicitly excludes live model calls. |
 | 9 | Tier 1 failures block before Tier 2 | fail | No runner exists to enforce fail-fast ordering. |
 | 10 | Graph modes are explicit | pass | Docs distinguish live, persisted, and fixture modes; ARK target evidence records live mode and `/tmp` output. |
-| 11 | Compact output records omissions | pass | `GraphContextCompact.omissions.validationCommands` is implemented and tested; ARK preflight reports 102 omitted validation commands. |
+| 11 | Compact output records limits and omissions | pass | `GraphContextCompact.limits.validationCommands` and `GraphContextCompact.omissions.validationCommands` are implemented and tested; ARK preflight reports a 20-command cap and 103 omitted validation commands. |
 
 ## Tier 2 Judge Checks
 
