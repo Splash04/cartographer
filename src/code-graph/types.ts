@@ -216,6 +216,11 @@ export interface GraphContextCompact {
 	readonly manifest: CodeGraphManifest;
 	readonly summary: GraphContextSummary;
 	readonly totals: GraphContextTotals;
+	readonly omissions: GraphContextOmissions;
+}
+
+export interface GraphContextOmissions {
+	readonly validationCommands: number;
 }
 
 export interface GraphContextTotals {

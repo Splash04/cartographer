@@ -33,15 +33,19 @@ export function buildGraphContext(graph: CodeGraphSnapshot, options: BuildGraphC
 }
 
 export function compactGraphContext(context: GraphContext): GraphContextCompact {
+	const summary = compactGraphContextSummary(context.summary);
 	return {
 		path: context.path,
 		selector: context.selector,
 		depth: context.depth,
 		manifest: context.manifest,
-		summary: compactGraphContextSummary(context.summary),
+		summary,
 		totals: {
 			slice: graphSliceTotals(context.slice),
 			impact: graphSliceTotals(context.impact),
+		},
+		omissions: {
+			validationCommands: Math.max(0, context.summary.validationCommands.length - summary.validationCommands.length),
 		},
 	};
 }

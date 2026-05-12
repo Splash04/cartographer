@@ -228,6 +228,7 @@ describe("runCartographer", () => {
 		const preflight = await runCliJson(["cartographer", "preflight", "--out", outDir, "--path", "src/index.ts"]);
 		const summary = recordField(preflight, "summary");
 		const totals = recordField(preflight, "totals");
+		const omissions = recordField(preflight, "omissions");
 		const preflightMetadata = recordField(preflight, "preflight");
 		const timings = recordField(preflightMetadata, "timings");
 
@@ -248,6 +249,7 @@ describe("runCartographer", () => {
 		expect(stringArrayField(summary, "testPaths")).toContain("src/index.test.ts");
 		expect(numberField(recordField(totals, "slice"), "nodes")).toBeGreaterThan(0);
 		expect(numberField(recordField(totals, "impact"), "nodes")).toBeGreaterThan(0);
+		expect(numberField(omissions, "validationCommands")).toBeGreaterThanOrEqual(0);
 		expect(validationCommandNames(preflight)).toContain("test");
 		expect(validationCommandNames(preflight).at(0)).toBe("test:src/index.test.ts");
 		expectValidationCommand(preflight, {

@@ -42,6 +42,7 @@ describe("runCartographerPreflight", () => {
 		expect(result.data.context.summary.primaryPaths).toContain("src/index.ts");
 		expect(result.data.context.summary.testPaths).toContain("src/index.test.ts");
 		expect(result.data.context.summary.validationCommands.map((item) => item.name)).toContain("test");
+		expect(result.data.context.omissions.validationCommands).toBe(0);
 		expect(result.data.context.summary.validationCommands).toContainEqual({
 			packageId: "package:.",
 			scriptId: "script:.:test",
@@ -148,6 +149,7 @@ describe("runCartographerPreflight", () => {
 			"test:src/index.test.ts",
 		);
 		expect(result.data.context.summary.validationCommands.length).toBeLessThanOrEqual(20);
+		expect(result.data.context.omissions.validationCommands).toBeGreaterThan(0);
 		expect(result.data.context.summary.validationCommands).toContainEqual({
 			packageId: "package:.",
 			scriptId: "script:.:typecheck",

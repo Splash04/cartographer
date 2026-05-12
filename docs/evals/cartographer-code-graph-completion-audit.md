@@ -27,7 +27,7 @@ The objective is complete only when Cartographer itself has:
 | Include eval targets | `docs/prds/cartographer-v2-code-graph.md` and `docs/evals/cartographer-code-graph-eval-suites.md` define graph correctness, navigation, adoption, task outcome, monorepo, IaC, and semantic overlay targets. | Done as plan |
 | Use ARK as test target base | On 2026-05-12, the standalone CLI indexed `/Users/saint/dev/agent-runtime-kernel` read-only and wrote artifacts to `/tmp/cartographer-ark-codegraph`. No graph artifacts were written inside ARK. | Done as read-only evidence |
 | Measure graph speed | ARK index: 0.41s wall time, 227,573,760 bytes max RSS. ARK live preflight: 368ms total, 353ms graph load, 13ms context build, 2ms prompt render. | Partial - manual evidence only |
-| Measure codebase understanding | ARK preflight for `src/code-graph/commands.ts` surfaced 17 primary paths, 2 focused test paths, 0 findings, and a compact 11-command validation list led by `builder.test.ts`, `commands.test.ts`, and module-level `bun test ./src/code-graph`. | Partial - one manual target only |
+| Measure codebase understanding | ARK preflight for `src/code-graph/commands.ts` surfaced 17 primary paths, 2 focused test paths, 0 findings, and a compact 11-command validation list led by `builder.test.ts`, `commands.test.ts`, and module-level `bun test ./src/code-graph`. The compact payload also records `omissions.validationCommands: 102` so evals know broader command data was intentionally withheld. | Partial - one manual target only |
 | Use coding-agent harnesses such as Codex | Existing docs describe adoption and trace checks, and `cartographer adoption` can score runtime traces. There is no standalone repeatable Codex eval profile in this repo yet. | Partial |
 | Produce runnable eval reports | No `scripts/cartographer-code-graph-evals.ts`, no `eval:cartographer:*` scripts, and no `docs/reports/cartographer-code-graph-*.json` reports exist. | Missing |
 | Keep deterministic graph separate from semantic overlay | CLI supports deterministic graph artifacts plus candidate/reviewed overlay annotations. PRD and feature docs state that overlays cannot rescue missing graph facts. | Done |
@@ -78,13 +78,14 @@ bun run cartographer:preflight -- \
 
 Result after compact validation-command filtering:
 
-- duration: 327ms
-- graph load: 314ms
-- context build: 11ms
+- duration: 335ms
+- graph load: 321ms
+- context build: 13ms
 - prompt render: 1ms
 - primary paths: 17
 - test paths: 2
 - validation commands: 11, down from the earlier 114-command compact list
+- omitted validation commands: 102
 - findings: 0
 
 Focused paths surfaced:
